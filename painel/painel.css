@@ -1,0 +1,29 @@
+body.painel { padding-bottom: calc(84px + env(safe-area-inset-bottom)); background: #fdf4f6; }
+.ptopo { padding: calc(18px + env(safe-area-inset-top)) 20px 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ptopo h1 { font-size: 1.7rem; margin: 0; }
+.pcorpo { padding: 8px 16px 24px; max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+.abas { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--linha); display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 30; }
+.abas a { text-decoration: none; color: var(--tinta-suave); font-size: .72rem; font-weight: 700; display: flex; flex-direction: column; align-items: center; padding: 8px 0 10px; position: relative; }
+.abas a span { font-size: 1.35rem; line-height: 1.3; }
+.abas a.ativo { color: var(--rosa-escuro); }
+.abas i { position: absolute; top: 4px; left: 56%; background: var(--rosa); color: #fff; font-style: normal; font-size: .7rem; min-width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center; padding: 0 5px; }
+.numeros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.num { background: #fff; border-radius: 16px; padding: 16px; border: 1px solid var(--linha); }
+.num b { font-family: var(--titulo); font-size: 2rem; display: block; line-height: 1.1; }
+.num span { color: var(--tinta-suave); font-size: .85rem; font-weight: 600; }
+.item { background: #fff; border: 1px solid var(--linha); border-radius: 16px; padding: 14px 16px; display: grid; gap: 6px; }
+.item .linha { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+.item h3 { font-family: var(--texto); font-size: 1.02rem; font-weight: 800; margin: 0; }
+.item .acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.seg { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.barra { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font-size: .85rem; }
+.barra .b { height: 10px; border-radius: 5px; background: var(--rosa); }
+.grafico { display: flex; align-items: end; gap: 3px; height: 90px; padding-top: 6px; }
+.grafico div { flex: 1; background: var(--rosa); border-radius: 3px 3px 0 0; min-height: 2px; }
+.btn.perigo { background: #fff; color: #b3261e; border: 2px solid #f3c7c3; }
+.btn.verde { background: var(--verde); }
+.titulo-sec { font-family: var(--titulo); font-size: 1.25rem; margin: 10px 0 0; }
+.login { max-width: 420px; margin: 0 auto; padding: 60px 20px; }
+.voltar { text-decoration: none; font-weight: 700; font-size: .95rem; }
+.miniatura { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: var(--rosa-claro); flex: none; }

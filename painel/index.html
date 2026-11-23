@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Painel da Liga</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#d9597f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Painel Liga">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="../assets/icone-192.png">
+  <link rel="icon" href="../assets/icone-192.png">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <link rel="stylesheet" href="painel.css">
+</head>
+<body class="painel">
+  <main id="app"><div class="carregando">Carregando…</div></main>
+  <nav class="abas" id="abas" hidden>
+    <a href="#/inicio" data-aba="inicio"><span>📊</span>Início</a>
+    <a href="#/aprovar" data-aba="aprovar"><span>✅</span>Aprovar<i id="badge" hidden></i></a>
+    <a href="#/conteudo" data-aba="conteudo"><span>🗂️</span>Conteúdo</a>
+    <a href="#/lista/leads" data-aba="leads"><span>💬</span>Pedidos</a>
+    <a href="#/ajustes" data-aba="ajustes"><span>⚙️</span>Ajustes</a>
+  </nav>
+  <script src="../assets/vendor/supabase-2.119.2.js"></script>
+  <script type="module" src="painel.js"></script>
+</body>
+</html>
