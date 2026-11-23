@@ -5,6 +5,8 @@ const app = $('#app');
 let TEMAS = [];
 const hoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
 const temaAtivo = (t) => (!t.inicio || t.inicio <= hoje()) && (!t.fim || t.fim >= hoje());
+let AGENTES = [];
+const nomeAgente = (slug) => { const a = AGENTES.find((x) => x.slug === slug); return a ? `${a.emoji} ${a.nome}` : slug; };
 const nomeTema = (id) => { const t = TEMAS.find((x) => x.id === id); return t ? `${t.emoji || ''} ${t.nome}` : ''; };
 
 // Texto pronto para o grupo/canal de Achadinhos no WhatsApp
@@ -87,10 +89,11 @@ const ENT = {
   ideias: {
     nome: 'Caixa de ideias', icone: '💡', titulo: (r) => r.texto.length > 80 ? r.texto.slice(0, 80) + '…' : r.texto, ordem: ['criado_em', false],
     sub: (r) => [dataBR(r.criado_em), { nova: 'nova', desenvolvida: 'Claude desenvolveu', virou_acao: 'virou ação', arquivada: 'arquivada' }[r.status]].join(' · '),
-    extra: (r) => r.desenvolvimento ? `<div class="small" style="white-space:pre-wrap;background:#fff7fa;border-radius:12px;padding:10px">✨ ${esc(r.desenvolvimento)}</div>` : '',
+    extra: (r) => (r.desenvolvimento ? `<div class="small" style="white-space:pre-wrap;background:#fff7fa;border-radius:12px;padding:10px">✨ ${esc(r.desenvolvimento)}</div>` : '') + (r.agente ? `<a class="small" href="#/equipe/${esc(r.agente)}">👉 Com: ${esc(nomeAgente(r.agente))}</a>` : ''),
     campos: [
       ['texto', 'Ideia', 'textarea', { req: true }],
       ['desenvolvimento', 'Desenvolvimento (Claude)', 'textarea'],
+      ['agente', 'Quem cuida', 'select', { opFn: () => AGENTES.map((a) => [a.slug, `${a.emoji} ${a.nome}`]) }],
       ['status', 'Situação', 'select', { op: [['nova', 'Nova'], ['desenvolvida', 'Claude desenvolveu'], ['virou_acao', 'Virou ação'], ['arquivada', 'Arquivada']] }],
     ],
     novo: { status: 'nova' },
@@ -106,6 +109,17 @@ const ENT = {
       ['publicado', 'Mostrar no site', 'bool'],
     ],
     novo: { publicado: true, meta_semana: 8 },
+  },
+  lancamentos: {
+    nome: 'Financeiro', icone: '💰', titulo: (r) => `${r.tipo === 'saida' ? '−' : '+'} ${brl(r.valor)} · ${r.descricao}`, ordem: ['data', false],
+    sub: (r) => [dataBR(r.data), r.categoria, r.recebido ? '' : 'a receber'].filter(Boolean).join(' · '),
+    campos: [
+      ['tipo', 'Tipo', 'select', { op: [['entrada', 'Entrou dinheiro'], ['saida', 'Saiu dinheiro']] }],
+      ['valor', 'Valor (R$)', 'number', { req: true }], ['descricao', 'Descrição', 'text', { req: true, ph: 'Plano Parceira · Óticas Lures' }],
+      ['categoria', 'Categoria', 'select', { op: op(['Plano do Guia', 'Afiliados', 'Feira da Liga', 'Publi e parceria', 'Material', 'Anúncios', 'Ferramentas', 'Outros']) }],
+      ['data', 'Data', 'date'], ['recebido', 'Já caiu na conta', 'bool'],
+    ],
+    novo: { tipo: 'entrada', recebido: true },
   },
   conteudos: {
     nome: 'Vídeos e posts', icone: '🎬', titulo: (r) => r.titulo, ordem: ['data_prevista', true],
@@ -252,7 +266,7 @@ async function telaAprovar() {
 }
 
 function telaConteudo() {
-  return topo('Conteúdo') + `<div class="pcorpo">${['ideias', 'temas', 'achadinhos', 'negocios', 'episodios', 'eventos', 'conteudos'].map((k) => `
+  return topo('Conteúdo') + `<div class="pcorpo">${['ideias', 'temas', 'achadinhos', 'negocios', 'episodios', 'eventos', 'conteudos', 'lancamentos'].map((k) => `
     <a class="item" href="#/lista/${k}" style="text-decoration:none;color:inherit"><div class="linha"><h3>${ENT[k].icone} ${ENT[k].nome}</h3><span>›</span></div></a>`).join('')}
     <a class="item" href="../" target="_blank" style="text-decoration:none;color:inherit"><div class="linha"><h3>🌐 Ver o site</h3><span>↗</span></div></a>
   </div>`;
@@ -381,6 +395,66 @@ async function telaAjustes() {
   </div>`;
 }
 
+/* ---------- Equipe de agentes ---------- */
+async function carregarAgentes() {
+  if (AGENTES.length) return AGENTES;
+  const { data } = await sb.from('agentes').select('*').order('ordem');
+  AGENTES = data || []; return AGENTES;
+}
+const blocoTexto = (t) => `<div class="small" style="white-space:pre-wrap">${esc(t || '')}</div>`;
+function cartaoPergunta(r, mostrarAgente) {
+  return `<div class="item">${mostrarAgente ? `<div class="small muted">${esc(nomeAgente(r.agente))} · ${dataBR(r.criado_em)}</div>` : `<div class="small muted">${dataBR(r.criado_em)}</div>`}
+    <b>${esc(r.pergunta)}</b>
+    ${r.resposta ? `<div class="resposta">${esc(r.resposta)}</div>` : '<div class="small muted">⏳ Na fila. A resposta chega na próxima rodada da equipe.</div>'}</div>`;
+}
+function formPergunta(slugFixo) {
+  setTimeout(() => { const f = $('#fPergunta'); if (f) f.addEventListener('submit', async (e) => {
+    e.preventDefault(); const pergunta = f.elements.pergunta.value.trim(); if (!pergunta) return;
+    const agente = slugFixo || f.elements.agente.value;
+    f.querySelector('button').disabled = true;
+    const { error } = await sb.from('perguntas_agentes').insert({ agente, pergunta });
+    if (error) { f.querySelector('button').disabled = false; return toast('Não enviou: ' + error.message); }
+    toast('Pergunta enviada 💗'); rota();
+  }); });
+  return `<form class="item" id="fPergunta"><h3>💬 ${slugFixo ? 'Perguntar para ' + esc(nomeAgente(slugFixo)) : 'Perguntar para a equipe'}</h3>
+    ${slugFixo ? '' : `<select name="agente">${AGENTES.map((a) => `<option value="${esc(a.slug)}">${esc(a.emoji)} ${esc(a.nome)}${a.slug === 'triagem' ? ' (não sei quem)' : ''}</option>`).join('')}</select>`}
+    <textarea name="pergunta" required placeholder="Toque no 🎤 e fale. Ex.: quais os próximos passos para a Feira de dezembro?"></textarea>
+    <div class="acoes"><button class="btn peq">Enviar pergunta</button></div></form>`;
+}
+async function telaEquipe() {
+  await carregarAgentes();
+  const { data: pergs } = await sb.from('perguntas_agentes').select('*').neq('status', 'arquivada').order('criado_em', { ascending: false }).limit(15);
+  const fila = (slug) => (pergs || []).filter((p) => p.agente === slug && p.status === 'aguardando').length;
+  return topo('Sua equipe') + `<div class="pcorpo">
+    <p class="small muted" style="margin:0">Cada agente cuida de uma parte da Liga. Toque num agente para ver os próximos passos ou pergunte direto.</p>
+    ${formPergunta()}
+    <div class="agentes">${AGENTES.map((a) => `<a class="item agente" href="#/equipe/${esc(a.slug)}"><span class="emo">${esc(a.emoji)}</span><b>${esc(a.nome)}</b><span class="small muted">${esc(a.missao)}</span>${fila(a.slug) ? `<i>${fila(a.slug)} na fila</i>` : ''}</a>`).join('') || '<div class="vazio">A equipe ainda não foi carregada.</div>'}</div>
+    ${(pergs || []).length ? `<h2 class="titulo-sec">Conversas recentes</h2>${pergs.map((r) => cartaoPergunta(r, true)).join('')}` : ''}
+  </div>`;
+}
+async function telaAgente(slug) {
+  await carregarAgentes();
+  const a = AGENTES.find((x) => x.slug === slug); if (!a) return telaEquipe();
+  const [{ data: pergs }, { data: ideias }] = await Promise.all([
+    sb.from('perguntas_agentes').select('*').eq('agente', slug).neq('status', 'arquivada').order('criado_em', { ascending: false }).limit(20),
+    sb.from('ideias').select('*').eq('agente', slug).in('status', ['desenvolvida', 'virou_acao']).order('criado_em', { ascending: false }).limit(10),
+  ]);
+  setTimeout(() => { const b = $('#copiarInstr'); if (b) b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(a.instrucoes || ''); toast('Instruções copiadas ✔'); } catch { toast('Não deu para copiar'); }
+  }); });
+  return topo(`${esc(a.emoji)} ${esc(a.nome)}`) + `<div class="pcorpo">
+    <a class="voltar" href="#/equipe">‹ Equipe</a>
+    <p style="margin:0">${esc(a.missao)}</p>
+    <div class="item"><h3>👣 Próximos passos</h3>${blocoTexto(a.proximos_passos || 'Ainda sem próximos passos.')}<div class="small muted">Atualizado em ${dataBR(a.atualizado_em)}</div></div>
+    ${formPergunta(slug)}
+    ${(ideias || []).length ? `<h2 class="titulo-sec">Ideias com este agente</h2>${ideias.map((i) => `<a class="item" href="#/editar/ideias/${i.id}" style="text-decoration:none;color:inherit"><b>💡 ${esc(i.texto.length > 90 ? i.texto.slice(0, 90) + '…' : i.texto)}</b></a>`).join('')}` : ''}
+    ${(pergs || []).length ? `<h2 class="titulo-sec">Conversas</h2>${pergs.map((r) => cartaoPergunta(r, false)).join('')}` : ''}
+    <details class="item"><summary><b>📋 Como este agente trabalha</b></summary>${blocoTexto(a.instrucoes)}
+      <p class="small muted">Quando você tiver o seu próprio Claude, copie isto para um Projeto e converse ao vivo.</p>
+      <div class="acoes"><button class="btn sec peq" id="copiarInstr" type="button">Copiar instruções</button></div></details>
+  </div>`;
+}
+
 /* ---------- Roteador ---------- */
 async function rota() {
   const { data: { session } } = await sb.auth.getSession();
@@ -397,11 +471,12 @@ async function rota() {
   TEMAS = temas || [];
   const partes = location.hash.replace(/^#\/?/, '').split('/');
   const aba = partes[0] || 'inicio';
+  if ((aba === 'lista' && partes[1] === 'ideias') || aba === 'editar') await carregarAgentes();
   $$('#abas a').forEach((a) => a.classList.toggle('ativo', a.dataset.aba === (aba === 'lista' && partes[1] === 'leads' ? 'leads' : aba === 'lista' || aba === 'editar' ? 'conteudo' : aba)));
   app.innerHTML = '<div class="carregando">Carregando…</div>';
   try {
     app.innerHTML = await ({
-      inicio: telaInicio, aprovar: telaAprovar, conteudo: telaConteudo, ajustes: telaAjustes,
+      inicio: telaInicio, aprovar: telaAprovar, equipe: () => (partes[1] ? telaAgente(partes[1]) : telaEquipe()), conteudo: telaConteudo, ajustes: telaAjustes,
       lista: () => telaLista(partes[1]), editar: () => telaEditar(partes[1], partes[2]),
     }[aba] || telaInicio)();
   } catch (e) { console.error(e); app.innerHTML = `<div class="pcorpo"><div class="vazio">Algo deu errado: ${esc(e.message)}</div></div>`; }
