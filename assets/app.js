@@ -3,6 +3,10 @@ import { CATEGORIAS, CIDADES } from './config.js';
 
 const app = $('#app');
 let CFG = {};
+let TEMAS = [];
+const hoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+const temaAtivo = (t) => (!t.inicio || t.inicio <= hoje()) && (!t.fim || t.fim >= hoje());
+const temaDe = (id) => TEMAS.find((t) => t.id === id);
 
 /* ---------- Métricas (sem dados pessoais) ---------- */
 const vistos = new Set();
@@ -23,7 +27,8 @@ $('#btnMenu').addEventListener('click', () => {
 });
 
 async function carregarConfig() {
-  const { data } = await sb.from('config').select('chave, valor');
+  const [{ data }, temas] = await Promise.all([sb.from('config').select('chave, valor'), sb.from('temas').select('*').order('inicio', { ascending: true, nullsFirst: false })]);
+  TEMAS = temas.data || [];
   CFG = Object.fromEntries((data || []).map((r) => [r.chave, r.valor || '']));
   if (CFG.logo_url) $('#selo').innerHTML = `<img src="${esc(safeUrl(CFG.logo_url))}" alt="">`;
   const links = [];
@@ -57,7 +62,7 @@ function cartaoNegocio(n) {
 function cartaoOferta(o) {
   return `<article class="cartao oferta">
     ${o.imagem_url ? `<img class="capa" src="${esc(safeUrl(o.imagem_url))}" alt="" loading="lazy">` : ''}
-    <div class="tags">${o.loja ? `<span class="tag cinza">${esc(o.loja)}</span>` : ''}${o.cupom ? `<span class="tag ouro">Cupom ${esc(o.cupom)}</span>` : ''}</div>
+    <div class="tags">${temaDe(o.tema_id) ? `<span class="tag">${esc(temaDe(o.tema_id).emoji || '')} ${esc(temaDe(o.tema_id).nome)}</span>` : ''}${o.loja ? `<span class="tag cinza">${esc(o.loja)}</span>` : ''}${o.cupom ? `<span class="tag ouro">Cupom ${esc(o.cupom)}</span>` : ''}</div>
     <h3>${esc(o.titulo)}</h3>
     ${o.descricao ? `<p class="muted small">${esc(o.descricao)}</p>` : ''}
     <div>${o.preco ? `<span class="preco">${brl(o.preco)}</span>` : ''}${o.preco_antigo ? `<span class="antigo">${brl(o.preco_antigo)}</span>` : ''}</div>
@@ -96,11 +101,17 @@ const btnEntrar = (classe = '') => CFG.link_comunidade
   ? `<a class="btn zap ${classe}" href="${esc(safeUrl(CFG.link_comunidade))}" target="_blank" rel="noopener" data-clique="entrar_comunidade">Entrar na comunidade</a>`
   : `<a class="btn zap ${classe}" href="#/entrar">Entrar na comunidade</a>`;
 
+function chipsTemas(atual) {
+  const ativos = TEMAS.filter(temaAtivo);
+  if (!ativos.length) return '';
+  return `<div class="chips" style="margin-bottom:16px"><a class="chip ${!atual ? 'on' : ''}" href="#/achadinhos" style="text-decoration:none">Todos</a>${ativos.map((t) => `<a class="chip ${atual === t.id ? 'on' : ''}" href="#/achadinhos?tema=${t.id}" style="text-decoration:none">${esc(t.emoji || '')} ${esc(t.nome)}</a>`).join('')}</div>`;
+}
+
 /* ---------- Páginas ---------- */
 const paginas = {
   async inicio() {
     const [ofertas, eventos, eps] = await Promise.all([
-      sb.from('achadinhos').select('*').eq('status', 'publicado').order('publicado_em', { ascending: false }).limit(3),
+      sb.from('achadinhos').select('*').eq('status', 'publicado').order('publicado_em', { ascending: false }).limit(6),
       sb.from('eventos').select('*').eq('publicado', true).order('data', { ascending: true, nullsFirst: false }).limit(3),
       sb.from('episodios').select('*').eq('publicado', true).order('data', { ascending: false }).limit(3),
     ]);
@@ -135,7 +146,8 @@ const paginas = {
     </div></section>` : ''}
 
     ${(ofertas.data || []).length ? `<section class="bloco"><div class="wrap">
-      <div class="cab-secao"><h2>Achadinhos da semana</h2><a href="#/achadinhos">Ver todos</a></div>
+      <div class="cab-secao"><h2>Achadinhos da vez</h2><a href="#/achadinhos">Ver todos</a></div>
+      ${chipsTemas('')}
       <div class="grade">${ofertas.data.map(cartaoOferta).join('')}</div>
     </div></section>` : ''}
 
@@ -242,13 +254,19 @@ const paginas = {
     </div></section>`;
   },
 
-  async achadinhos() {
-    const { data } = await sb.from('achadinhos').select('*').eq('status', 'publicado').order('publicado_em', { ascending: false }).limit(60);
+  async achadinhos(params) {
+    const tema = params.get('tema') || '';
+    let q = sb.from('achadinhos').select('*').eq('status', 'publicado').order('publicado_em', { ascending: false }).limit(60);
+    if (tema) q = q.eq('tema_id', tema);
+    const { data } = await q;
+    const t = temaDe(tema);
     return `<section class="bloco"><div class="wrap">
       <h1>🎁 Achadinhos da Liga</h1>
-      <p class="muted">Ofertas escolhidas a dedo: só entra o que a gente recomendaria para uma amiga.</p>
+      <p class="muted">Ofertas escolhidas a dedo, por tema: só entra o que a gente recomendaria para uma amiga.</p>
+      ${chipsTemas(tema)}
+      ${t ? `<h2>${esc(t.emoji || '')} ${esc(t.nome)}</h2>${t.descricao ? `<p class="muted">${esc(t.descricao)}</p>` : ''}` : ''}
       <p class="aviso">Alguns links são de afiliado: você paga o mesmo preço e a Liga recebe uma pequena comissão que ajuda a manter a comunidade. Preços e estoque podem mudar a qualquer momento.</p>
-      <div class="grade" style="margin-top:20px">${(data || []).length ? data.map(cartaoOferta).join('') : vazio('Novos achadinhos chegam em breve!')}</div>
+      <div class="grade" style="margin-top:20px">${(data || []).length ? data.map(cartaoOferta).join('') : vazio(t ? 'Os achadinhos desse tema estão chegando!' : 'Novos achadinhos chegam em breve!')}</div>
       ${CFG.link_canal ? `<p style="margin-top:24px"><a class="btn zap" href="${esc(safeUrl(CFG.link_canal))}" target="_blank" rel="noopener" data-clique="entrar_canal">Seguir o canal de Achadinhos no WhatsApp</a></p>` : ''}
     </div></section>`;
   },

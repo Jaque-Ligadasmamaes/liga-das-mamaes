@@ -7,4 +7,4 @@ Site público da Liga das Mamães (Atibaia e região) e painel da equipe em `/pa
 
 ## Banco de dados
 
-Projeto Supabase `liga-das-mamaes` na organização "Liga das Mamães" (conta da Jaque). Para recriar o banco do zero, rode `supabase/schema.sql` e depois `supabase/seed.sql` no SQL Editor.
+Projeto Supabase `liga-das-mamaes` na organização "Liga das Mamães" (conta da Jaque). Para recriar o banco do zero, rode no SQL Editor, nesta ordem: `supabase/schema.sql`, `supabase/seed.sql`, `supabase/002_temas.sql`, `supabase/003_ideias.sql`.

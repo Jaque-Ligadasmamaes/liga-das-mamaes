@@ -2,6 +2,34 @@ import { sb, esc, $, $$, brl, dataBR, safeUrl, waLink, toast } from '../assets/l
 import { CATEGORIAS, CIDADES } from '../assets/config.js';
 
 const app = $('#app');
+let TEMAS = [];
+const hoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+const temaAtivo = (t) => (!t.inicio || t.inicio <= hoje()) && (!t.fim || t.fim >= hoje());
+const nomeTema = (id) => { const t = TEMAS.find((x) => x.id === id); return t ? `${t.emoji || ''} ${t.nome}` : ''; };
+
+// Texto pronto para o grupo/canal de Achadinhos no WhatsApp
+function textoWhats(o) {
+  const t = TEMAS.find((x) => x.id === o.tema_id);
+  const linhas = [`🎁 *Achadinho da Liga*${t ? ` · ${t.emoji || ''} ${t.nome}` : ''}`, '', `*${o.titulo}*`];
+  if (o.descricao) linhas.push(o.descricao);
+  linhas.push('');
+  if (o.preco) linhas.push(o.preco_antigo ? `💰 De ~${brl(o.preco_antigo)}~ por *${brl(o.preco)}*` : `💰 *${brl(o.preco)}*`);
+  if (o.cupom) linhas.push(`🏷️ Cupom: *${o.cupom}*`);
+  linhas.push(`🛒 ${o.loja ? o.loja + ': ' : ''}${o.link}`, '', '_Link de afiliado: você paga o mesmo preço e ajuda a manter a Liga 💗_');
+  return linhas.join('\n');
+}
+async function enviarWhats(o) {
+  const texto = textoWhats(o);
+  try {
+    if (navigator.share) { await navigator.share({ text: texto }); return; }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(texto); toast('Texto copiado! Cole no grupo de Achadinhos.'); }
+  catch { prompt('Copie o texto:', texto); }
+}
+window.__enviarWhats = async (id) => {
+  const { data } = await sb.from('achadinhos').select('*').eq('id', id).single();
+  if (data) enviarWhats(data);
+};
 
 /* ---------- O que dá para cadastrar ---------- */
 const op = (arr) => arr.map((x) => (Array.isArray(x) ? x : [x, x]));
@@ -23,9 +51,11 @@ const ENT = {
   },
   achadinhos: {
     nome: 'Achadinhos', icone: '🎁', titulo: (r) => r.titulo, ordem: ['criado_em', false],
-    sub: (r) => [r.loja, brl(r.preco), r.status].filter(Boolean).join(' · '),
+    sub: (r) => [nomeTema(r.tema_id), r.loja, brl(r.preco), r.status].filter(Boolean).join(' · '),
+    extra: (r) => r.status === 'publicado' ? `<div class="acoes"><button class="btn zap peq" onclick="__enviarWhats('${r.id}')">Enviar no WhatsApp</button></div>` : '',
     campos: [
       ['titulo', 'Produto', 'text', { req: true }], ['link', 'Link de afiliado', 'text', { req: true }],
+      ['tema_id', 'Tema', 'select', { opFn: () => TEMAS.map((t) => [t.id, `${t.emoji || ''} ${t.nome}${temaAtivo(t) ? '' : ' (fora de época)'}`]) }],
       ['loja', 'Loja', 'select', { op: op(['Shopee', 'Mercado Livre', 'Amazon', 'Magalu', 'Outra']) }],
       ['preco', 'Preço (R$)', 'number'], ['preco_antigo', 'Preço antes (R$)', 'number'], ['cupom', 'Cupom', 'text'],
       ['imagem_url', 'Foto do produto', 'foto'], ['descricao', 'Por que vale a pena', 'textarea'],
@@ -53,6 +83,29 @@ const ENT = {
       ['publicado', 'Mostrar no site', 'bool'],
     ],
     novo: { tipo: 'role', publicado: true },
+  },
+  ideias: {
+    nome: 'Caixa de ideias', icone: '💡', titulo: (r) => r.texto.length > 80 ? r.texto.slice(0, 80) + '…' : r.texto, ordem: ['criado_em', false],
+    sub: (r) => [dataBR(r.criado_em), { nova: 'nova', desenvolvida: 'Claude desenvolveu', virou_acao: 'virou ação', arquivada: 'arquivada' }[r.status]].join(' · '),
+    extra: (r) => r.desenvolvimento ? `<div class="small" style="white-space:pre-wrap;background:#fff7fa;border-radius:12px;padding:10px">✨ ${esc(r.desenvolvimento)}</div>` : '',
+    campos: [
+      ['texto', 'Ideia', 'textarea', { req: true }],
+      ['desenvolvimento', 'Desenvolvimento (Claude)', 'textarea'],
+      ['status', 'Situação', 'select', { op: [['nova', 'Nova'], ['desenvolvida', 'Claude desenvolveu'], ['virou_acao', 'Virou ação'], ['arquivada', 'Arquivada']] }],
+    ],
+    novo: { status: 'nova' },
+  },
+  temas: {
+    nome: 'Temas da vez', icone: '🗓️', titulo: (r) => `${r.emoji || ''} ${r.nome}`, ordem: ['inicio', true],
+    sub: (r) => [r.inicio ? `${dataBR(r.inicio)} a ${dataBR(r.fim)}` : 'o ano todo', temaAtivo(r) ? 'ativo agora' : 'fora de época', `meta ${r.meta_semana || 0}/semana`].join(' · '),
+    extra: (r) => r.palavras ? `<p class="small muted">🔎 ${esc(r.palavras)}</p>` : '',
+    campos: [
+      ['nome', 'Nome do tema', 'text', { req: true }], ['emoji', 'Emoji', 'text', { ph: '☀️' }], ['descricao', 'Descrição (aparece no site)', 'textarea'],
+      ['inicio', 'Começa em', 'date'], ['fim', 'Termina em', 'date'],
+      ['palavras', 'O que buscar (palavras separadas por vírgula)', 'textarea'], ['meta_semana', 'Meta de ofertas por semana', 'number'],
+      ['publicado', 'Mostrar no site', 'bool'],
+    ],
+    novo: { publicado: true, meta_semana: 8 },
   },
   conteudos: {
     nome: 'Vídeos e posts', icone: '🎬', titulo: (r) => r.titulo, ordem: ['data_prevista', true],
@@ -126,6 +179,20 @@ async function telaInicio() {
   const nomes = { inicio: 'Página inicial', guia: 'Guia', indicar: 'Indicar', cafe: 'Café', agenda: 'Agenda', achadinhos: 'Achadinhos', anuncie: 'Anuncie', entrar: 'Entrar na Liga' };
   const cliqueNomes = { achadinho: 'Ofertas', negocio_whatsapp: 'WhatsApp de negócios', negocio_instagram: 'Instagram de negócios', negocio_site: 'Site de negócios', entrar_comunidade: 'Entrar na comunidade', entrar_canal: 'Canal de achadinhos', episodio: 'Episódios', evento: 'Eventos', instagram: 'Instagram da Liga', contato: 'Fale com a gente', pedir_entrada: 'Pedir entrada' };
   const barras = (arr, nm) => { const max = Math.max(1, ...arr.map((x) => x.total)); return arr.map((x) => `<div class="barra"><span>${esc(nm[x.alvo] || x.alvo)}</span><div class="b" style="width:${(x.total / max) * 100}%"></div><b>${x.total}</b></div>`).join('') || '<p class="muted small">Sem dados ainda.</p>'; };
+  const semana = new Date(Date.now() - 7 * 864e5).toISOString();
+  const { data: recentes } = await sb.from('achadinhos').select('tema_id, status').gte('criado_em', semana);
+  const ativos = TEMAS.filter(temaAtivo);
+  const painelTemas = ativos.length ? `<div class="item"><div class="linha"><h3>🗓️ Temas da vez</h3><a class="small" href="#/lista/temas">editar</a></div>${ativos.map((t) => {
+    const pub = (recentes || []).filter((r) => r.tema_id === t.id && r.status === 'publicado').length;
+    const fila = (recentes || []).filter((r) => r.tema_id === t.id && r.status === 'sugerido').length;
+    return `<div><div class="linha"><span>${esc(t.emoji || '')} ${esc(t.nome)}</span><b>${pub}/${t.meta_semana || 0}</b></div><div class="small muted">${fila ? fila + ' na fila · ' : ''}${t.fim ? 'até ' + dataBR(t.fim) : 'o ano todo'}</div></div>`;
+  }).join('')}<p class="small muted">Ofertas publicadas nos últimos 7 dias / meta da semana.</p></div>` : '';
+  setTimeout(() => { const fi = $('#fIdeia'); if (fi) fi.addEventListener('submit', async (e) => {
+    e.preventDefault(); const texto = fi.elements.texto.value.trim(); if (!texto) return;
+    const { error } = await sb.from('ideias').insert({ texto });
+    if (error) return toast('Não salvou: ' + error.message);
+    fi.reset(); toast('Ideia guardada! O Claude vai desenvolver 💡');
+  }); });
   const dia = m.por_dia || []; const maxd = Math.max(1, ...dia.map((d) => d.visitas));
   const pendTxt = [
     pend.negocios && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>📒 ${pend.negocios} indicação(ões) para aprovar</b></a>`,
@@ -135,7 +202,12 @@ async function telaInicio() {
   ].filter(Boolean).join('');
   return topo('Oi, Jaque! 💗', `<select id="dias" style="width:auto">${[7, 30, 90].map((d) => `<option value="${d}" ${d === dias ? 'selected' : ''}>${d} dias</option>`).join('')}</select>`) + `
   <div class="pcorpo">
+    <form class="item" id="fIdeia"><h3>💡 Teve uma ideia?</h3>
+      <textarea name="texto" required placeholder="Toque no 🎤 do teclado e fale. Ex.: fazer um rolê de piscina em janeiro com uma marca de protetor solar…"></textarea>
+      <div class="acoes"><button class="btn peq">Guardar ideia</button><a class="btn sec peq" href="#/lista/ideias">Ver minhas ideias</a></div>
+    </form>
     ${pendTxt || '<div class="item"><b>✨ Nada para aprovar agora.</b></div>'}
+    ${painelTemas}
     <div class="numeros">
       <div class="num"><b>${m.visitas}</b><span>visitas ao site</span></div>
       <div class="num"><b>${m.cliques}</b><span>cliques em links</span></div>
@@ -168,7 +240,9 @@ async function telaAprovar() {
     b.disabled = true;
     const { error } = await sb.from(ent).update(upd).eq('id', id);
     if (error) { b.disabled = false; return toast('Não deu: ' + error.message); }
-    toast(st === 'descartado' || st === 'arquivado' ? 'Descartado' : 'Aprovado! 💗'); rota();
+    toast(st === 'descartado' || st === 'arquivado' ? 'Descartado' : 'Aprovado! 💗');
+    if (ent === 'achadinhos' && st === 'publicado' && confirm('Publicado no site! Quer enviar agora no WhatsApp?')) await window.__enviarWhats(id);
+    rota();
   })));
   return topo('Aprovar') + `<div class="pcorpo">
     ${bloco('🎁 Achadinhos', a.data || [], 'achadinhos', 'publicado', 'descartado', 'Publicar no site')}
@@ -178,7 +252,7 @@ async function telaAprovar() {
 }
 
 function telaConteudo() {
-  return topo('Conteúdo') + `<div class="pcorpo">${['negocios', 'achadinhos', 'episodios', 'eventos', 'conteudos'].map((k) => `
+  return topo('Conteúdo') + `<div class="pcorpo">${['ideias', 'temas', 'achadinhos', 'negocios', 'episodios', 'eventos', 'conteudos'].map((k) => `
     <a class="item" href="#/lista/${k}" style="text-decoration:none;color:inherit"><div class="linha"><h3>${ENT[k].icone} ${ENT[k].nome}</h3><span>›</span></div></a>`).join('')}
     <a class="item" href="../" target="_blank" style="text-decoration:none;color:inherit"><div class="linha"><h3>🌐 Ver o site</h3><span>↗</span></div></a>
   </div>`;
@@ -206,7 +280,7 @@ function inputCampo([k, rot, tipo, o = {}], v) {
   const req = o.req ? 'required' : '';
   let h;
   if (tipo === 'textarea') h = `<textarea name="${k}" ${req}>${esc(val)}</textarea>`;
-  else if (tipo === 'select') h = `<select name="${k}" ${req}><option value="">—</option>${o.op.map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(val) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
+  else if (tipo === 'select') h = `<select name="${k}" ${req}><option value="">—</option>${(o.opFn ? o.opFn() : o.op).map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(val) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
   else if (tipo === 'bool') return `<div class="campo"><label class="check"><input type="checkbox" name="${k}" ${val ? 'checked' : ''}> ${esc(rot)}</label></div>`;
   else if (tipo === 'foto') h = `<input type="hidden" name="${k}" value="${esc(val)}"><img class="miniatura" id="prev_${k}" src="${esc(safeUrl(val))}" alt="" ${val ? '' : 'hidden'} style="width:120px;height:120px;margin-bottom:8px"><input type="file" accept="image/*" data-foto="${k}"><div class="ajuda">Escolha uma foto do celular.</div>`;
   else h = `<input name="${k}" type="${tipo === 'number' ? 'number" step="0.01' : tipo === 'tel' ? 'tel' : tipo}" value="${esc(tipo === 'date' ? String(val).slice(0, 10) : val)}" placeholder="${esc(o.ph || '')}" ${req}>`;
@@ -319,6 +393,8 @@ async function rota() {
     return;
   }
   $('#abas').hidden = false;
+  const { data: temas } = await sb.from('temas').select('*').order('inicio', { ascending: true, nullsFirst: false });
+  TEMAS = temas || [];
   const partes = location.hash.replace(/^#\/?/, '').split('/');
   const aba = partes[0] || 'inicio';
   $$('#abas a').forEach((a) => a.classList.toggle('ativo', a.dataset.aba === (aba === 'lista' && partes[1] === 'leads' ? 'leads' : aba === 'lista' || aba === 'editar' ? 'conteudo' : aba)));
