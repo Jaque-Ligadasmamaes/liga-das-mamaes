@@ -1,6 +1,6 @@
 // Chaves públicas (podem ficar no site). A segurança vem das regras do banco (RLS).
-export const SUPABASE_URL = 'https://fwbnhbsiivlmibthpcax.supabase.co';
-export const SUPABASE_KEY = 'sb_publishable_3eEF6NXjndJjkmJcNMq34A_Vrn1eCpp';
+export const SUPABASE_URL = 'https://hrgvtdfsqtjlfzhsdcnk.supabase.co';
+export const SUPABASE_KEY = 'sb_publishable_WK084yz0hOSX7uVE79YNHw_GcPJiBRR';
 
 export const CATEGORIAS = [
   'Escolas e berçários', 'Saúde', 'Convênios', 'Festas e buffets', 'Fotografia',

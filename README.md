@@ -4,3 +4,7 @@ Site público da Liga das Mamães (Atibaia e região) e painel da equipe em `/pa
 
 - HTML/JS puro, sem build. Publicado pelo GitHub Pages (branch `main`, pasta raiz).
 - Dados no Supabase (plano grátis). A chave em `assets/config.js` é pública; a segurança vem das regras do banco (RLS).
+
+## Banco de dados
+
+Projeto Supabase `liga-das-mamaes` na organização "Liga das Mamães" (conta da Jaque). Para recriar o banco do zero, rode `supabase/schema.sql` e depois `supabase/seed.sql` no SQL Editor.
