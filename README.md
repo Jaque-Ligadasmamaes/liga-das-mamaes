@@ -7,4 +7,8 @@ Site público da Liga das Mamães (Atibaia e região) e painel da equipe em `/pa
 
 ## Banco de dados
 
-Projeto Supabase `liga-das-mamaes` na organização "Liga das Mamães" (conta da Jaque). Para recriar o banco do zero, rode no SQL Editor, nesta ordem: `supabase/schema.sql`, `supabase/seed.sql`, `supabase/002_temas.sql`, `supabase/003_ideias.sql`, `supabase/004_agentes.sql` (a carga dos agentes, com as instruções, fica nos arquivos do projeto, fora do repositório público).
+Projeto Supabase `liga-das-mamaes` na organização "Liga das Mamães" (conta da Jaque). Para recriar o banco do zero, rode no SQL Editor, nesta ordem: `supabase/schema.sql`, `supabase/seed.sql`, `supabase/002_temas.sql`, `supabase/003_ideias.sql`, `supabase/004_agentes.sql`, `supabase/005_emails.sql` (a carga dos agentes, com as instruções, fica nos arquivos do projeto, fora do repositório público).
+
+## Robô de e-mails
+
+`robo/gmail-liga.gs` é um Google Apps Script (grátis) que roda no Gmail da Liga às 6h e às 18h e manda para o painel (Conteúdo › E-mails da Liga) os e-mails de afiliados, lojas, parcerias e cadastros. A chave dele aparece no painel em Ajustes › Robô de e-mails e fica nas propriedades do script (CHAVE_LIGA), nunca no código.

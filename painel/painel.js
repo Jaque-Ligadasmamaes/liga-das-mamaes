@@ -28,6 +28,11 @@ async function enviarWhats(o) {
   try { await navigator.clipboard.writeText(texto); toast('Texto copiado! Cole no grupo de Achadinhos.'); }
   catch { prompt('Copie o texto:', texto); }
 }
+window.__resolverEmail = async (id) => {
+  const { error } = await sb.from('emails_liga').update({ status: 'resolvido' }).eq('id', id);
+  if (error) return toast('Não deu: ' + error.message);
+  toast('Resolvido ✔'); rota();
+};
 window.__enviarWhats = async (id) => {
   const { data } = await sb.from('achadinhos').select('*').eq('id', id).single();
   if (data) enviarWhats(data);
@@ -132,6 +137,15 @@ const ENT = {
     ],
     novo: { status: 'aprovado', formato: 'reels' },
   },
+  emails_liga: {
+    nome: 'E-mails da Liga', icone: '📬', titulo: (r) => r.assunto || '(sem assunto)', ordem: ['recebido_em', false], semNovo: true,
+    sub: (r) => [r.remetente, dataBR(r.recebido_em), { afiliados: 'afiliados', dinheiro: '💰 dinheiro', parcerias: 'parceria', lojas: 'loja', redes: 'redes', seguranca: '🔒 segurança', outros: '' }[r.categoria], { novo: 'novo', resumido: 'para ver', resolvido: 'resolvido', arquivado: 'arquivado' }[r.status]].filter(Boolean).join(' · '),
+    extra: (r) => `${r.resumo ? `<div class="resposta">${esc(r.resumo)}</div>` : ''}${r.acao ? `<div class="small"><b>👉 ${esc(r.acao)}</b></div>` : ''}<div class="acoes">${r.link ? `<a class="btn sec peq" target="_blank" rel="noopener" href="${esc(safeUrl(r.link))}">Abrir no Gmail</a>` : ''}${r.status !== 'resolvido' ? `<button class="btn verde peq" onclick="__resolverEmail('${r.id}')">Feito ✔</button>` : ''}</div>`,
+    campos: [
+      ['resumo', 'Resumo (Claude)', 'textarea'], ['acao', 'O que fazer', 'textarea'],
+      ['status', 'Situação', 'select', { op: [['novo', 'Novo'], ['resumido', 'Para ver'], ['resolvido', 'Resolvido'], ['arquivado', 'Arquivado']] }],
+    ],
+  },
   leads: {
     nome: 'Pedidos', icone: '💬', titulo: (r) => `${r.nome}${r.negocio ? ' · ' + r.negocio : ''}`, ordem: ['criado_em', false], semNovo: true,
     sub: (r) => [{ anuncio: 'Quer anunciar', feira: 'Quer expor na Feira', parceria: 'Parceria' }[r.tipo], r.plano, dataBR(r.criado_em), r.status].filter(Boolean).join(' · '),
@@ -179,8 +193,9 @@ async function telaLogin() {
 
 async function contarPendencias() {
   const c = (t, col, v) => sb.from(t).select('id', { count: 'exact', head: true }).eq(col, v);
-  const [n, a, v, l] = await Promise.all([c('negocios', 'status', 'pendente'), c('achadinhos', 'status', 'sugerido'), c('conteudos', 'status', 'ideia'), c('leads', 'status', 'novo')]);
-  const p = { negocios: n.count || 0, achadinhos: a.count || 0, conteudos: v.count || 0, leads: l.count || 0 };
+  const em = sb.from('emails_liga').select('id', { count: 'exact', head: true }).in('status', ['novo', 'resumido']).not('acao', 'is', null);
+  const [n, a, v, l, e] = await Promise.all([c('negocios', 'status', 'pendente'), c('achadinhos', 'status', 'sugerido'), c('conteudos', 'status', 'ideia'), c('leads', 'status', 'novo'), em]);
+  const p = { negocios: n.count || 0, achadinhos: a.count || 0, conteudos: v.count || 0, leads: l.count || 0, emails: e.count || 0 };
   const total = p.negocios + p.achadinhos + p.conteudos;
   $('#badge').hidden = !total; $('#badge').textContent = total;
   return p;
@@ -212,6 +227,7 @@ async function telaInicio() {
     pend.negocios && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>📒 ${pend.negocios} indicação(ões) para aprovar</b></a>`,
     pend.achadinhos && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>🎁 ${pend.achadinhos} achadinho(s) para aprovar</b></a>`,
     pend.conteudos && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>🎬 ${pend.conteudos} ideia(s) de vídeo para aprovar</b></a>`,
+    pend.emails && `<a class="item" href="#/lista/emails_liga" style="text-decoration:none;color:inherit"><b>📬 ${pend.emails} e-mail(s) da Liga pedem ação</b></a>`,
     pend.leads && `<a class="item" href="#/lista/leads" style="text-decoration:none;color:inherit"><b>💬 ${pend.leads} pedido(s) novo(s) de anunciante</b></a>`,
   ].filter(Boolean).join('');
   return topo('Oi, Jaque! 💗', `<select id="dias" style="width:auto">${[7, 30, 90].map((d) => `<option value="${d}" ${d === dias ? 'selected' : ''}>${d} dias</option>`).join('')}</select>`) + `
@@ -266,7 +282,7 @@ async function telaAprovar() {
 }
 
 function telaConteudo() {
-  return topo('Conteúdo') + `<div class="pcorpo">${['ideias', 'temas', 'achadinhos', 'negocios', 'episodios', 'eventos', 'conteudos', 'lancamentos'].map((k) => `
+  return topo('Conteúdo') + `<div class="pcorpo">${['ideias', 'emails_liga', 'temas', 'achadinhos', 'negocios', 'episodios', 'eventos', 'conteudos', 'lancamentos'].map((k) => `
     <a class="item" href="#/lista/${k}" style="text-decoration:none;color:inherit"><div class="linha"><h3>${ENT[k].icone} ${ENT[k].nome}</h3><span>›</span></div></a>`).join('')}
     <a class="item" href="../" target="_blank" style="text-decoration:none;color:inherit"><div class="linha"><h3>🌐 Ver o site</h3><span>↗</span></div></a>
   </div>`;
@@ -386,10 +402,18 @@ async function telaAjustes() {
       const { error } = await sb.auth.updateUser({ password: s });
       toast(error ? 'Não trocou: ' + error.message : 'Senha trocada ✔'); e.target.reset();
     });
+    $('#verChave').addEventListener('click', async () => {
+      const { data: k, error } = await sb.rpc('chave_robo_emails');
+      if (error || !k) return toast('Não deu para pegar a chave');
+      $('#chave').textContent = k; $('#chave').hidden = false;
+      try { await navigator.clipboard.writeText(k); toast('Chave copiada ✔'); } catch { toast('Toque e segure na chave para copiar'); }
+    });
     $('#btnSair').addEventListener('click', async () => { await sb.auth.signOut(); rota(); });
   });
   return topo('Ajustes') + `<div class="pcorpo">
     <form id="fAjustes" class="item"><h3>Site</h3>${campos.map((cp) => inputCampo(cp, c[cp[0]])).join('')}<button class="btn">Salvar ajustes</button></form>
+    <div class="item"><h3>📬 Robô de e-mails</h3><p class="small muted" style="margin:0">Chave para colar no robô do Gmail da Liga (propriedade CHAVE_LIGA). Não mande essa chave por WhatsApp nem no chat.</p>
+      <div class="acoes"><button class="btn sec peq" id="verChave" type="button">Mostrar e copiar a chave</button></div><code id="chave" hidden style="word-break:break-all;font-size:.85rem"></code></div>
     <form id="fSenha" class="item"><h3>Trocar minha senha</h3><div class="campo"><input name="nova" type="password" autocomplete="new-password" placeholder="Nova senha (mín. 8)"></div><button class="btn sec">Trocar senha</button></form>
     <button class="btn perigo" id="btnSair">Sair do painel</button>
   </div>`;
