@@ -110,7 +110,7 @@ const ENT = {
     campos: [
       ['nome', 'Nome do tema', 'text', { req: true }], ['emoji', 'Emoji', 'text', { ph: '☀️' }], ['descricao', 'Descrição (aparece no site)', 'textarea'],
       ['inicio', 'Começa em', 'date'], ['fim', 'Termina em', 'date'],
-      ['palavras', 'O que buscar (palavras separadas por vírgula)', 'textarea'], ['meta_semana', 'Meta de ofertas por semana', 'number'],
+      ['palavras', 'O que buscar (palavras separadas por vírgula)', 'textarea'], ['preco_max', 'Preço máximo (R$)', 'number'], ['meta_semana', 'Meta de ofertas por semana', 'number'],
       ['publicado', 'Mostrar no site', 'bool'],
     ],
     novo: { publicado: true, meta_semana: 8 },

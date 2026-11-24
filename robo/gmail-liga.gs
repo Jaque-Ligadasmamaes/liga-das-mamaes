@@ -59,7 +59,7 @@ function buscarEmails() {
 }
 
 function instalar() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'buscarEmails') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('buscarEmails').timeBased().everyDays(1).atHour(6).inTimezone('America/Sao_Paulo').create();
   ScriptApp.newTrigger('buscarEmails').timeBased().everyDays(1).atHour(18).inTimezone('America/Sao_Paulo').create();
   const n = buscarEmails();
