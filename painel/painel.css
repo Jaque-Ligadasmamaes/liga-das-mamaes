@@ -34,3 +34,6 @@ body.painel { padding-bottom: calc(84px + env(safe-area-inset-bottom)); backgrou
 .resposta { white-space: pre-wrap; background: #fff7fa; border-radius: 12px; padding: 10px 12px; font-size: .92rem; }
 details.item summary { cursor: pointer; list-style: none; }
 details.item summary::-webkit-details-marker { display: none; }
+.tarefa summary .linha { align-items: center; }
+.tarefa[open] { border-color: var(--rosa); }
+.tarefa textarea { min-height: 60px; }

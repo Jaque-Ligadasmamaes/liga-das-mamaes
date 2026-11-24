@@ -222,6 +222,21 @@ async function telaInicio() {
     if (error) return toast('Não salvou: ' + error.message);
     fi.reset(); toast('Ideia guardada! O Claude vai desenvolver 💡');
   }); });
+  const { data: tarefas } = await sb.from('tarefas').select('*').eq('feito', false).order('ordem').order('criado_em');
+  const pendTarefas = (tarefas || []).filter((t) => !t.para || t.para <= hoje());
+  const painelTarefas = pendTarefas.length ? `<div class="item"><h3>✅ Pra fazer (${pendTarefas.length})</h3><p class="small muted" style="margin:0">Toque em cada uma para ver o passo a passo.</p></div>` + pendTarefas.map((t) => `
+    <details class="item tarefa"><summary><div class="linha"><b>${esc(t.titulo)}</b><span class="small muted">${esc(t.tempo || '')}</span></div></summary>
+      <div class="small" style="white-space:pre-wrap">${esc(t.passos || '')}</div>
+      ${t.link ? `<a class="btn sec peq" target="_blank" rel="noopener" href="${esc(safeUrl(t.link))}">Abrir ↗</a>` : ''}
+      <textarea data-resp="${t.id}" placeholder="Responder (opcional)">${esc(t.resposta || '')}</textarea>
+      <div class="acoes"><button class="btn verde peq" data-feito="${t.id}">Feito ✔</button></div></details>`).join('') : '';
+  setTimeout(() => $$('[data-feito]').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.dataset.feito; const resp = $(`[data-resp="${id}"]`).value.trim();
+    b.disabled = true;
+    const { error } = await sb.from('tarefas').update({ feito: true, feito_em: new Date().toISOString(), resposta: resp || null }).eq('id', id);
+    if (error) { b.disabled = false; return toast('Não deu: ' + error.message); }
+    toast('Feito! 💗'); rota();
+  })));
   const dia = m.por_dia || []; const maxd = Math.max(1, ...dia.map((d) => d.visitas));
   const pendTxt = [
     pend.negocios && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>📒 ${pend.negocios} indicação(ões) para aprovar</b></a>`,
@@ -232,6 +247,7 @@ async function telaInicio() {
   ].filter(Boolean).join('');
   return topo('Oi, Jaque! 💗', `<select id="dias" style="width:auto">${[7, 30, 90].map((d) => `<option value="${d}" ${d === dias ? 'selected' : ''}>${d} dias</option>`).join('')}</select>`) + `
   <div class="pcorpo">
+    ${painelTarefas}
     <form class="item" id="fIdeia"><h3>💡 Teve uma ideia?</h3>
       <textarea name="texto" required placeholder="Toque no 🎤 do teclado e fale. Ex.: fazer um rolê de piscina em janeiro com uma marca de protetor solar…"></textarea>
       <div class="acoes"><button class="btn peq">Guardar ideia</button><a class="btn sec peq" href="#/lista/ideias">Ver minhas ideias</a></div>
