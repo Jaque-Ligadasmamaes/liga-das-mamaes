@@ -194,8 +194,8 @@ async function telaLogin() {
 async function contarPendencias() {
   const c = (t, col, v) => sb.from(t).select('id', { count: 'exact', head: true }).eq(col, v);
   const em = sb.from('emails_liga').select('id', { count: 'exact', head: true }).in('status', ['novo', 'resumido']).not('acao', 'is', null);
-  const [n, a, v, l, e] = await Promise.all([c('negocios', 'status', 'pendente'), c('achadinhos', 'status', 'sugerido'), c('conteudos', 'status', 'ideia'), c('leads', 'status', 'novo'), em]);
-  const p = { negocios: n.count || 0, achadinhos: a.count || 0, conteudos: v.count || 0, leads: l.count || 0, emails: e.count || 0 };
+  const [n, a, v, l, e, w] = await Promise.all([c('negocios', 'status', 'pendente'), c('achadinhos', 'status', 'sugerido'), c('conteudos', 'status', 'ideia'), c('leads', 'status', 'novo'), em, c('wa_pendencias', 'status', 'aberta')]);
+  const p = { negocios: n.count || 0, achadinhos: a.count || 0, conteudos: v.count || 0, leads: l.count || 0, emails: e.count || 0, grupos: w.count || 0 };
   const total = p.negocios + p.achadinhos + p.conteudos;
   $('#badge').hidden = !total; $('#badge').textContent = total;
   return p;
@@ -243,6 +243,7 @@ async function telaInicio() {
     pend.achadinhos && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>🎁 ${pend.achadinhos} achadinho(s) para aprovar</b></a>`,
     pend.conteudos && `<a class="item" href="#/aprovar" style="text-decoration:none;color:inherit"><b>🎬 ${pend.conteudos} ideia(s) de vídeo para aprovar</b></a>`,
     pend.emails && `<a class="item" href="#/lista/emails_liga" style="text-decoration:none;color:inherit"><b>📬 ${pend.emails} e-mail(s) da Liga pedem ação</b></a>`,
+    pend.grupos && `<a class="item" href="#/grupos" style="text-decoration:none;color:inherit"><b>🙋 ${pend.grupos} pedido(s) sem resposta nos grupos</b></a>`,
     pend.leads && `<a class="item" href="#/lista/leads" style="text-decoration:none;color:inherit"><b>💬 ${pend.leads} pedido(s) novo(s) de anunciante</b></a>`,
   ].filter(Boolean).join('');
   return topo('Oi, Jaque! 💗', `<select id="dias" style="width:auto">${[7, 30, 90].map((d) => `<option value="${d}" ${d === dias ? 'selected' : ''}>${d} dias</option>`).join('')}</select>`) + `
@@ -435,6 +436,95 @@ async function telaAjustes() {
   </div>`;
 }
 
+/* ---------- Resumo dos grupos (robô do WhatsApp, só leitura) ---------- */
+const ACOES_ROBO = 'https://github.com/Jaque-Ligadasmamaes/liga-das-mamaes/actions/workflows/robo-whatsapp.yml';
+const horaBR = (d) => d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+const AVISO_GRUPO = 'Oi, mamães! 💗 Para a gente não perder nenhum pedido de indicação na correria, a Liga agora tem uma *assistente de resumo* (o número "Liga · Resumos"). Ela só lê o grupo, nunca manda mensagem, não guarda fotos nem áudios e apaga o texto em 3 dias. Serve só para a Jaque ver rapidinho o que ficou sem resposta. Qualquer dúvida, é só me chamar!';
+async function telaGrupos() {
+  const [{ data: grupos }, { data: pend }, { data: resumos }, { data: sit }] = await Promise.all([
+    sb.from('wa_grupos').select('*').order('nome'),
+    sb.from('wa_pendencias').select('*').eq('status', 'aberta').order('enviada_em', { ascending: false }).limit(40),
+    sb.from('wa_resumos').select('*').order('criado_em', { ascending: false }).limit(60),
+    sb.rpc('situacao_robo_whats'),
+  ]);
+  const gs = grupos || []; const ativos = gs.filter((g) => g.ativo);
+  const nomeGrupo = (jid) => (gs.find((g) => g.jid === jid) || {}).nome || 'Grupo';
+  const rs = resumos || [];
+  setTimeout(() => {
+    $$('[data-pend]').forEach((b) => b.addEventListener('click', async () => {
+      const [id, st] = b.dataset.pend.split('|'); b.disabled = true;
+      const { error } = await sb.from('wa_pendencias').update({ status: st, resolvida_em: new Date().toISOString() }).eq('id', id);
+      if (error) { b.disabled = false; return toast('Não deu: ' + error.message); }
+      toast(st === 'resolvida' ? 'Respondido ✔' : 'Tirei da lista'); rota();
+    }));
+    $$('[data-grupo]').forEach((c) => c.addEventListener('change', async () => {
+      const { error } = await sb.from('wa_grupos').update({ ativo: c.checked }).eq('jid', c.dataset.grupo);
+      toast(error ? 'Não salvou: ' + error.message : c.checked ? 'O robô vai ler este grupo a partir da próxima rodada' : 'O robô parou de ler este grupo');
+    }));
+    const fn = $('#fNumero'); if (fn) fn.addEventListener('submit', async (e) => {
+      e.preventDefault(); const n = fn.elements.numero.value.replace(/\D/g, '');
+      if (n.length < 12) return toast('Coloque 55 + DDD + número, ex.: 5511987654321');
+      const { error } = await sb.rpc('numero_robo_whats', { numero: n });
+      toast(error ? 'Não salvou: ' + error.message : 'Número do chip salvo ✔'); if (!error) rota();
+    });
+    const bp = $('#pausar'); if (bp) bp.addEventListener('click', async () => {
+      const { error } = await sb.rpc('pausar_robo_whats', { pausar: !sit?.pausado });
+      toast(error ? 'Não deu: ' + error.message : sit?.pausado ? 'Robô ligado de novo ✔' : 'Robô pausado. Ele não lê nada até você ligar de novo.'); rota();
+    });
+    const bc = $('#verChaveWhats'); if (bc) bc.addEventListener('click', async () => {
+      const { data: k, error } = await sb.rpc('chave_robo_whats');
+      if (error || !k) return toast('Não deu para pegar a chave');
+      $('#chaveWhats').textContent = k; $('#chaveWhats').hidden = false;
+      try { await navigator.clipboard.writeText(k); toast('Chave copiada ✔'); } catch { toast('Toque e segure na chave para copiar'); }
+    });
+    const ba = $('#copiarAviso'); if (ba) ba.addEventListener('click', async () => {
+      try { if (navigator.share) { await navigator.share({ text: AVISO_GRUPO }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+      try { await navigator.clipboard.writeText(AVISO_GRUPO); toast('Aviso copiado! Cole no grupo.'); } catch { prompt('Copie o aviso:', AVISO_GRUPO); }
+    });
+    $$('[data-visto]').forEach((b) => b.addEventListener('click', async () => {
+      await sb.from('wa_resumos').update({ visto: true }).eq('id', b.dataset.visto); rota();
+    }));
+  });
+  const cartaoPend = (p) => `<div class="item"><div class="small muted">${esc(p.autor || 'Alguém')} · ${esc(nomeGrupo(p.grupo_jid))} · ${horaBR(p.enviada_em)}</div>
+    <div>${esc(p.texto)}</div>
+    <div class="acoes"><button class="btn verde peq" data-pend="${p.id}|resolvida">Já foi respondido ✔</button><button class="btn sec peq" data-pend="${p.id}|ignorada">Não é pedido</button></div></div>`;
+  const cartaoResumo = (jid) => {
+    const doGrupo = rs.filter((r) => r.grupo_jid === jid);
+    const ultimo = doGrupo.find((r) => r.fonte === 'claude') || doGrupo[0];
+    const robo = doGrupo.find((r) => r.fonte === 'robo');
+    const antigos = doGrupo.filter((r) => r.fonte === 'claude' && r !== ultimo).slice(0, 6);
+    return `<div class="item"><div class="linha"><h3>👥 ${esc(nomeGrupo(jid))}</h3>${ultimo && !ultimo.visto ? '<span class="selo-novo">novo</span>' : ''}</div>
+      ${ultimo ? `<div class="small muted">${ultimo.de ? `${horaBR(ultimo.de)} até ${horaBR(ultimo.ate)}` : horaBR(ultimo.criado_em)}${ultimo.total ? ` · ${ultimo.total} mensagens de ${ultimo.pessoas} pessoas` : ''}</div>
+        ${ultimo.atencao ? `<div class="atencao">👉 ${esc(ultimo.atencao)}</div>` : ''}
+        ${ultimo.resumo ? `<div class="resposta">${esc(ultimo.resumo)}</div>` : ''}
+        ${ultimo.assuntos ? `<div class="small"><b>Assuntos:</b><br>${esc(ultimo.assuntos).replace(/\n/g, '<br>')}</div>` : ''}
+        ${ultimo.fonte === 'robo' ? '<div class="small muted">⏳ O resumo completo chega na próxima rodada do Claude (7h e 19h).</div>' : robo && robo.criado_em > ultimo.criado_em ? `<div class="small muted">Depois deste resumo: ${esc(robo.resumo)}</div>` : ''}
+        <div class="acoes">${!ultimo.visto ? `<button class="btn sec peq" data-visto="${ultimo.id}">Já li ✔</button>` : ''}</div>
+        ${antigos.length ? `<details><summary class="small"><b>Resumos anteriores</b></summary>${antigos.map((r) => `<div class="small" style="margin-top:8px"><b>${horaBR(r.criado_em)}</b>${r.atencao ? `<br>👉 ${esc(r.atencao)}` : ''}<div style="white-space:pre-wrap">${esc(r.resumo || '')}</div></div>`).join('')}</details>` : ''}`
+      : '<div class="small muted">Ainda sem resumo. O robô lê às 5h e às 17h, e o Claude resume às 7h e às 19h.</div>'}</div>`;
+  };
+  const situacao = !sit ? '' : sit.pausado ? '⏸️ Pausado' : sit.conectado ? '🟢 Conectado ao chip' + (sit.numero_final ? ` (final ${esc(sit.numero_final)})` : '') : '⚪ Ainda não conectado ao chip';
+  return topo('Grupos') + `<div class="pcorpo">
+    <p class="small muted" style="margin:0">O robô só <b>lê</b> os grupos ativados (nunca manda mensagem) e o Claude resume 2x por dia: o que rolou, pedidos sem resposta e o que precisa de você.</p>
+    ${(pend || []).length ? `<h2 class="titulo-sec">🙋 Pedidos sem resposta (${pend.length})</h2>${pend.map(cartaoPend).join('')}` : (ativos.length ? '<div class="item"><b>✨ Nenhum pedido sem resposta.</b></div>' : '')}
+    ${ativos.length ? `<h2 class="titulo-sec">📝 Resumos</h2>${ativos.map((g) => cartaoResumo(g.jid)).join('')}` : ''}
+    <h2 class="titulo-sec">⚙️ Robô</h2>
+    <div class="item"><div class="linha"><b>${situacao}</b><button class="btn sec peq" id="pausar" type="button">${sit?.pausado ? 'Ligar' : 'Pausar'}</button></div>
+      ${sit?.ultima_execucao ? `<div class="small muted">Última rodada: ${horaBR(sit.ultima_execucao)} · ${esc(sit.ultimo_status || '')}</div>` : ''}</div>
+    <details class="item" ${gs.length ? '' : 'open'}><summary><b>👥 Quais grupos o robô lê (${ativos.length} de ${gs.length})</b></summary>
+      ${gs.length ? `<p class="small muted">Comece com um grupo só por umas semanas. O robô só enxerga grupos em que o chip dele foi adicionado.</p>${gs.map((g) => `<label class="linha" style="align-items:center;padding:6px 0"><span>${esc(g.nome || 'Grupo sem nome')}${g.participantes ? ` <span class="small muted">· ${g.participantes} pessoas</span>` : ''}</span><input type="checkbox" data-grupo="${esc(g.jid)}" ${g.ativo ? 'checked' : ''} style="width:24px;height:24px"></label>`).join('')}`
+        : '<p class="small muted">A lista aparece depois que o chip for conectado e adicionado aos grupos.</p>'}</details>
+    <details class="item"><summary><b>📣 Aviso para o grupo</b></summary><div class="resposta">${esc(AVISO_GRUPO)}</div>
+      <p class="small muted">Mande do seu número (não do robô) quando adicionar o chip no grupo.</p><div class="acoes"><button class="btn peq" id="copiarAviso" type="button">Copiar aviso</button></div></details>
+    <details class="item"><summary><b>🔧 Configurar o robô (Cecells)</b></summary>
+      <form id="fNumero"><div class="campo"><label>Número do chip do robô</label><input name="numero" inputmode="numeric" placeholder="55 11 98765-4321" value=""></div>
+        ${sit?.tem_numero ? `<p class="small muted">Já cadastrado: final ${esc(sit.numero_final || '')}</p>` : ''}<button class="btn sec peq">Salvar número</button></form>
+      <p class="small muted">Chave para o segredo <b>ROBO_WHATS_CHAVE</b> no GitHub. Não mande por WhatsApp nem no chat.</p>
+      <div class="acoes"><button class="btn sec peq" id="verChaveWhats" type="button">Mostrar e copiar a chave</button><a class="btn sec peq" target="_blank" rel="noopener" href="${ACOES_ROBO}">Abrir o robô no GitHub ↗</a></div>
+      <code id="chaveWhats" hidden style="word-break:break-all;font-size:.85rem"></code></details>
+  </div>`;
+}
+
 /* ---------- Equipe de agentes ---------- */
 async function carregarAgentes() {
   if (AGENTES.length) return AGENTES;
@@ -516,7 +606,7 @@ async function rota() {
   app.innerHTML = '<div class="carregando">Carregando…</div>';
   try {
     app.innerHTML = await ({
-      inicio: telaInicio, aprovar: telaAprovar, equipe: () => (partes[1] ? telaAgente(partes[1]) : telaEquipe()), conteudo: telaConteudo, ajustes: telaAjustes,
+      inicio: telaInicio, aprovar: telaAprovar, grupos: telaGrupos, equipe: () => (partes[1] ? telaAgente(partes[1]) : telaEquipe()), conteudo: telaConteudo, ajustes: telaAjustes,
       lista: () => telaLista(partes[1]), editar: () => telaEditar(partes[1], partes[2]),
     }[aba] || telaInicio)();
   } catch (e) { console.error(e); app.innerHTML = `<div class="pcorpo"><div class="vazio">Algo deu errado: ${esc(e.message)}</div></div>`; }

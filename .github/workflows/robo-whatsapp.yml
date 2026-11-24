@@ -1,0 +1,43 @@
+# Robô SOMENTE LEITURA dos grupos da Liga (chip separado). Roda 2x por dia, de graça.
+# O log é público: o robô nunca escreve nomes, números ou mensagens nele.
+name: Robô do WhatsApp (resumo dos grupos)
+
+on:
+  schedule:
+    - cron: '17 8 * * *'   # 5h17 em São Paulo
+    - cron: '17 20 * * *'  # 17h17 em São Paulo
+  workflow_dispatch:
+    inputs:
+      acao:
+        description: 'O que fazer'
+        type: choice
+        options: [coletar, parear]
+        default: coletar
+
+concurrency:
+  group: robo-whatsapp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  robo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: robo/whatsapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: robo/whatsapp/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Rodar o robô
+        env:
+          ROBO_WHATS_CHAVE: ${{ secrets.ROBO_WHATS_CHAVE }}
+        run: |
+          if [ "${{ github.event.inputs.acao }}" = "parear" ]; then node coletar.mjs --parear; else node coletar.mjs; fi
