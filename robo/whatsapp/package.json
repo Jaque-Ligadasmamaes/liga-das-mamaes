@@ -1,0 +1,16 @@
+{
+  "name": "robo-whatsapp-liga",
+  "private": true,
+  "type": "module",
+  "description": "Robô SOMENTE LEITURA dos grupos da Liga das Mamães: lê, guarda o mínimo e manda para o painel. Nunca envia mensagens.",
+  "scripts": {
+    "coletar": "node coletar.mjs",
+    "parear": "node coletar.mjs --parear",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.6.0"
+  }
+}
