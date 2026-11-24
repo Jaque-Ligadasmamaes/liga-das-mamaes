@@ -33,7 +33,7 @@ async function rpc(nome, corpo) {
 }
 
 async function main() {
-  if (!CHAVE) throw new Error('Falta o segredo ROBO_WHATS_CHAVE no GitHub (veja o passo a passo).');
+  if (!CHAVE) { if (PAREAR) throw new Error('Falta o segredo ROBO_WHATS_CHAVE no GitHub (veja o passo a passo).'); log('Robô ainda não configurado (falta o segredo ROBO_WHATS_CHAVE). Nada a fazer.'); return; }
   const ini = await rpc('whats_inicio', { chave: CHAVE });
   const NUMERO = (ini.numero_chip || '').replace(/\D/g, '');
   if (PAREAR && NUMERO.length < 12) throw new Error('Cadastre o número do chip no painel (Grupos > Robô) com 55 + DDD + número.');
