@@ -1,0 +1,37 @@
+# Robô que POSTA os achadinhos aprovados no grupo escolhido no painel (chip separado).
+# Roda a cada 30 min; o banco decide se é hora (8h–21h SP, 45 min entre posts, máx. 5 por dia).
+# Se não há nada na fila, termina em segundos sem conectar no WhatsApp.
+# O log é público: nunca mostra nomes, números ou textos.
+name: Robô do WhatsApp (postar achadinhos)
+
+on:
+  schedule:
+    - cron: '*/30 11-23 * * *'  # 8h às 20h30 em São Paulo
+  workflow_dispatch:
+
+concurrency:
+  group: robo-whatsapp          # nunca roda junto com o robô de leitura (mesma sessão)
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  postar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        working-directory: robo/whatsapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: robo/whatsapp/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Postar o próximo achadinho da fila
+        env:
+          ROBO_WHATS_CHAVE: ${{ secrets.ROBO_WHATS_CHAVE }}
+        run: node postar.mjs
