@@ -9,21 +9,49 @@ let AGENTES = [];
 const nomeAgente = (slug) => { const a = AGENTES.find((x) => x.slug === slug); return a ? `${a.emoji} ${a.nome}` : slug; };
 const nomeTema = (id) => { const t = TEMAS.find((x) => x.id === id); return t ? `${t.emoji || ''} ${t.nome}` : ''; };
 
-// Texto pronto para o grupo/canal de Achadinhos no WhatsApp
+// Texto pronto para o grupo/canal de Achadinhos no WhatsApp, no modelo da Jaque:
+//   CHAMADA (linha da descrição sem "•")
+//   *Produto*
+//   *R$ 39* (de R$ 62)
+//   link
+//   • dicas (linhas da descrição que começam com • ou -)
 function textoWhats(o) {
-  const t = TEMAS.find((x) => x.id === o.tema_id);
-  const linhas = [`🎁 *Achadinho da Liga*${t ? ` · ${t.emoji || ''} ${t.nome}` : ''}`, '', `*${o.titulo}*`];
-  if (o.descricao) linhas.push(o.descricao);
-  linhas.push('');
-  if (o.preco) linhas.push(o.preco_antigo ? `💰 De ~${brl(o.preco_antigo)}~ por *${brl(o.preco)}*` : `💰 *${brl(o.preco)}*`);
-  if (o.cupom) linhas.push(`🏷️ Cupom: *${o.cupom}*`);
-  linhas.push(`🛒 ${o.loja ? o.loja + ': ' : ''}${o.link}`, '', '_Link de afiliado: você paga o mesmo preço e ajuda a manter a Liga 💗_');
+  const linhasDesc = String(o.descricao || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const dicas = linhasDesc.filter((l) => /^[•\-*]/.test(l)).map((l) => '• ' + l.replace(/^[•\-*]\s*/, ''));
+  const chamada = linhasDesc.filter((l) => !/^[•\-*]/.test(l));
+  const linhas = [];
+  if (chamada.length) linhas.push(...chamada.map((l) => `*${l.replace(/\*/g, '')}*`), '');
+  linhas.push(`*${o.titulo}*`, '');
+  if (o.preco) linhas.push(o.preco_antigo ? `*${brl(o.preco)}* (de ~${brl(o.preco_antigo)}~)` : `*${brl(o.preco)}*`);
+  linhas.push(o.link);
+  if (o.cupom) dicas.unshift(`• use o cupom *${o.cupom}*`);
+  if (dicas.length) linhas.push('', ...dicas);
+  linhas.push('', '_Link de afiliado: você paga o mesmo e ajuda a Liga 💗_');
   return linhas.join('\n');
+}
+async function fotoComoArquivo(url) {
+  try {
+    const r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) return null;
+    const b = await r.blob();
+    const tipo = b.type && b.type.startsWith('image/') ? b.type : 'image/jpeg';
+    return new File([b], 'achadinho.' + (tipo.split('/')[1] || 'jpg'), { type: tipo });
+  } catch { return null; }
 }
 async function enviarWhats(o) {
   const texto = textoWhats(o);
   try {
-    if (navigator.share) { await navigator.share({ text: texto }); return; }
+    if (navigator.share) {
+      // Com foto do produto quando o celular deixa (no iPhone o texto vai junto como legenda)
+      const foto = o.imagem_url ? await fotoComoArquivo(safeUrl(o.imagem_url)) : null;
+      if (foto && navigator.canShare && navigator.canShare({ files: [foto], text: texto })) {
+        try { await navigator.clipboard.writeText(texto); } catch { /* ok */ }
+        await navigator.share({ files: [foto], text: texto });
+        return;
+      }
+      await navigator.share({ text: texto });
+      return;
+    }
   } catch (e) { if (e.name === 'AbortError') return; }
   try { await navigator.clipboard.writeText(texto); toast('Texto copiado! Cole no grupo de Achadinhos.'); }
   catch { prompt('Copie o texto:', texto); }
@@ -65,7 +93,7 @@ const ENT = {
       ['tema_id', 'Tema', 'select', { opFn: () => TEMAS.map((t) => [t.id, `${t.emoji || ''} ${t.nome}${temaAtivo(t) ? '' : ' (fora de época)'}`]) }],
       ['loja', 'Loja', 'select', { op: op(['Shopee', 'Mercado Livre', 'Amazon', 'Magalu', 'Outra']) }],
       ['preco', 'Preço (R$)', 'number'], ['preco_antigo', 'Preço antes (R$)', 'number'], ['cupom', 'Cupom', 'text'],
-      ['imagem_url', 'Foto do produto', 'foto'], ['descricao', 'Por que vale a pena', 'textarea'],
+      ['imagem_url', 'Foto do produto', 'foto'], ['descricao', 'Chamada e dicas', 'textarea', { ph: 'NÃO COMPRE NO MERCADO!!\n• selecione programe e poupe\n• consulte disponibilidade para sua região' }],
       ['status', 'Situação', 'select', { op: [['sugerido', 'Para aprovar'], ['publicado', 'Publicado'], ['descartado', 'Descartado']] }],
     ],
     novo: { status: 'publicado', fonte: 'manual' },
@@ -274,13 +302,55 @@ async function telaAprovar() {
     sb.from('conteudos').select('*').eq('status', 'ideia').order('criado_em'),
   ]);
   contarPendencias();
+  // Achadinhos: filtro por loja (a busca diária traz até 20 de cada)
+  const todos = a.data || [];
+  const lojaSel = sessionStorage.getItem('f_loja_aprovar') || '';
+  const lojas = [...new Set(todos.map((r) => r.loja || 'Outra'))].sort();
+  const chips = todos.length ? `<div class="acoes" style="flex-wrap:wrap">${[['', `Todas (${todos.length})`], ...lojas.map((l) => [l, `${l} (${todos.filter((r) => (r.loja || 'Outra') === l).length})`])]
+    .map(([v, t]) => `<button class="btn ${v === lojaSel ? '' : 'sec'} peq" data-loja="${esc(v)}">${esc(t)}</button>`).join('')}</div>` : '';
+  const achados = lojaSel ? todos.filter((r) => (r.loja || 'Outra') === lojaSel) : todos;
+  const linkBox = (r) => r.precisa_link ? `
+      <div class="item" style="background:#FFF6EE;margin:.5rem 0">
+        <p class="small"><b>Falta o link de afiliado.</b> 1) Toque em Abrir no app. 2) Na barra de afiliados, toque em Compartilhar e copie o link. 3) Cole aqui e salve.</p>
+        <a class="btn sec peq" href="${esc(safeUrl(r.link_produto || r.link))}" target="_blank" rel="noopener">Abrir no app ↗</a>
+        <input type="url" inputmode="url" placeholder="Cole aqui o link de afiliado" data-linkinput="${r.id}" style="width:100%;margin:.5rem 0">
+        <button class="btn peq" data-salvarlink="${r.id}">Salvar link</button>
+      </div>` : '';
   const bloco = (titulo, itens, ent, sim, nao, simTxt) => `<h2 class="titulo-sec">${titulo}</h2>` + (itens.length ? itens.map((r) => `
     <div class="item"><div class="linha">${r.imagem_url ? `<img class="miniatura" src="${esc(safeUrl(r.imagem_url))}" alt="">` : ''}<div style="flex:1"><h3>${esc(ENT[ent].titulo(r))}</h3><div class="small muted">${esc(ENT[ent].sub(r))}</div></div></div>
       ${r.descricao ? `<p class="small">${esc(r.descricao)}</p>` : ''}${r.roteiro ? `<p class="small">${esc(r.roteiro)}</p>` : ''}
       ${r.indicado_por ? `<p class="small muted">Indicado por ${esc(r.indicado_por)}${r.contato_indicacao ? ' · ' + esc(r.contato_indicacao) : ''}</p>` : ''}
-      ${r.link && ent === 'achadinhos' ? `<a class="small" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Abrir oferta ↗</a>` : ''}
-      <div class="acoes"><button class="btn verde peq" data-acao="${ent}|${r.id}|${sim}">${simTxt}</button><a class="btn sec peq" href="#/editar/${ent}/${r.id}">Editar</a><button class="btn perigo peq" data-acao="${ent}|${r.id}|${nao}">Descartar</button></div>
+      ${ent === 'achadinhos' && (r.nota || r.vendas) ? `<p class="small muted">${r.nota ? '⭐ ' + esc(r.nota) : ''}${r.vendas ? ' · ' + esc(r.vendas) + ' vendidos' : ''}${r.preco_antigo ? ' · antes ' + esc(brl(r.preco_antigo)) : ''}</p>` : ''}
+      ${r.link && ent === 'achadinhos' && !r.precisa_link ? `<a class="small" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Abrir oferta ↗</a>` : ''}
+      ${ent === 'achadinhos' ? linkBox(r) : ''}
+      <div class="acoes"><button class="btn verde peq" data-acao="${ent}|${r.id}|${sim}" ${ent === 'achadinhos' && r.precisa_link ? 'disabled title="Cole o link de afiliado primeiro"' : ''}>${simTxt}</button><a class="btn sec peq" href="#/editar/${ent}/${r.id}">Editar</a><button class="btn perigo peq" data-acao="${ent}|${r.id}|${nao}">Descartar</button></div>
     </div>`).join('') : '<p class="muted small">Nada pendente.</p>');
+  setTimeout(() => {
+    const fN = $('#fNorte');
+    if (fN) fN.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const assunto = fN.elements.assunto.value.trim();
+      const extras = fN.elements.palavras.value.split(',').map((x) => x.trim()).filter(Boolean);
+      if (!assunto) return;
+      const palavras = [assunto, ...extras.filter((x) => x.toLowerCase() !== assunto.toLowerCase())].join(', ');
+      const fim = new Date(Date.now() - 3 * 3600e3 + 14 * 864e5).toISOString().slice(0, 10);
+      const { data: novo, error } = await sb.from('temas').insert({ nome: assunto, emoji: '🎯', palavras, inicio: hoje(), fim, meta_semana: 5, publicado: false }).select().single();
+      if (error) return toast('Não deu: ' + error.message);
+      TEMAS.push(novo);
+      toast('Pedido anotado ✔ Entra na próxima busca do robô.'); rota();
+    });
+    $$('[data-loja]').forEach((b) => b.addEventListener('click', () => { sessionStorage.setItem('f_loja_aprovar', b.dataset.loja); rota(); }));
+    $$('[data-salvarlink]').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.salvarlink;
+      const v = ($(`[data-linkinput="${id}"]`).value || '').trim();
+      const m = v.match(/https?:\/\/\S+/);
+      if (!m) return toast('Cole o link que começa com https://');
+      b.disabled = true;
+      const { error } = await sb.from('achadinhos').update({ link: m[0], precisa_link: false }).eq('id', id);
+      if (error) { b.disabled = false; return toast('Não salvou: ' + error.message); }
+      toast('Link salvo ✔ Agora é só publicar.'); rota();
+    }));
+  });
   setTimeout(() => $$('[data-acao]').forEach((b) => b.addEventListener('click', async () => {
     const [ent, id, st] = b.dataset.acao.split('|');
     const upd = { status: st }; if (ent === 'achadinhos' && st === 'publicado') upd.publicado_em = new Date().toISOString();
@@ -291,8 +361,16 @@ async function telaAprovar() {
     if (ent === 'achadinhos' && st === 'publicado' && confirm('Publicado no site! Quer enviar agora no WhatsApp?')) await window.__enviarWhats(id);
     rota();
   })));
+  const especiais = TEMAS.filter((t) => t.emoji === '🎯' && temaAtivo(t));
+  const norte = `<form id="fNorte" class="item"><h3>🎯 Busca especial</h3>
+      <p class="small muted">Escreva um assunto (ex.: cabelo maluco, dia do amigo, festa junina). O robô procura ofertas disso nas próximas 2 semanas, além das categorias fixas.</p>
+      <input name="assunto" placeholder="Ex.: cabelo maluco" maxlength="60" required style="width:100%;margin:.5rem 0">
+      <input name="palavras" placeholder="Palavras extras, separadas por vírgula (opcional)" maxlength="300" style="width:100%;margin-bottom:.5rem">
+      <button class="btn peq">Pedir busca</button>
+      ${especiais.length ? `<p class="small" style="margin-top:.5rem">Buscando agora: ${especiais.map((t) => `${esc(t.nome)} (até ${esc(dataBR(t.fim))})`).join(', ')}</p>` : ''}
+    </form>`;
   return topo('Aprovar') + `<div class="pcorpo">
-    ${bloco('🎁 Achadinhos', a.data || [], 'achadinhos', 'publicado', 'descartado', 'Publicar no site')}
+    ${norte}${chips}${bloco('🎁 Achadinhos', achados, 'achadinhos', 'publicado', 'descartado', 'Publicar no site')}
     ${bloco('📒 Indicações para o Guia', n.data || [], 'negocios', 'aprovado', 'arquivado', 'Aprovar')}
     ${bloco('🎬 Ideias de vídeo', v.data || [], 'conteudos', 'aprovado', 'descartado', 'Aprovar ideia')}
   </div>`;
@@ -326,7 +404,7 @@ function inputCampo([k, rot, tipo, o = {}], v) {
   const val = v ?? '';
   const req = o.req ? 'required' : '';
   let h;
-  if (tipo === 'textarea') h = `<textarea name="${k}" ${req}>${esc(val)}</textarea>`;
+  if (tipo === 'textarea') h = `<textarea name="${k}" placeholder="${esc(o.ph || '')}" ${req}>${esc(val)}</textarea>`;
   else if (tipo === 'select') h = `<select name="${k}" ${req}><option value="">—</option>${(o.opFn ? o.opFn() : o.op).map(([ov, ol]) => `<option value="${esc(ov)}" ${String(ov) === String(val) ? 'selected' : ''}>${esc(ol)}</option>`).join('')}</select>`;
   else if (tipo === 'bool') return `<div class="campo"><label class="check"><input type="checkbox" name="${k}" ${val ? 'checked' : ''}> ${esc(rot)}</label></div>`;
   else if (tipo === 'foto') h = `<input type="hidden" name="${k}" value="${esc(val)}"><img class="miniatura" id="prev_${k}" src="${esc(safeUrl(val))}" alt="" ${val ? '' : 'hidden'} style="width:120px;height:120px;margin-bottom:8px"><input type="file" accept="image/*" data-foto="${k}"><div class="ajuda">Escolha uma foto do celular.</div>`;

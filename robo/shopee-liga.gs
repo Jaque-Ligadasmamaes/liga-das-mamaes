@@ -19,6 +19,7 @@ const FILTRO = {
   vendasMinimas: 500,    // vendidos
   porPalavra: 20,        // resultados lidos por palavra de busca
   maxPorTema: 6,         // ofertas novas por tema em cada rodada
+  maxPorDia: 20,         // no máximo 20 ofertas novas da Shopee por dia
   proibidas: /eletrodom|air ?fryer|liquidificador|geladeira|celular|smartphone|tv |televis|notebook|vape|arma|aposta|adulto|sexy|lingerie/i,
 };
 
@@ -57,8 +58,10 @@ function supabaseRpc_(nome, corpo) {
 function buscarOfertas() {
   const chave = PropertiesService.getScriptProperties().getProperty('CHAVE_LIGA');
   const temas = supabaseRpc_('temas_para_robo', { chave: chave });
+  temas.sort(function (a, b) { return (b.emoji === '🎯') - (a.emoji === '🎯'); }); // buscas especiais primeiro
   let total = 0;
   temas.forEach(function (t) {
+    if (total >= FILTRO.maxPorDia) return;
     const vistos = {}; const bons = [];
     String(t.palavras).split(',').map(function (s) { return s.trim(); }).filter(String).forEach(function (palavra) {
       let itens = [];
@@ -75,13 +78,13 @@ function buscarOfertas() {
           origem_id: 'shopee:' + it.itemId, titulo: it.productName, link: it.offerLink, loja: 'Shopee',
           preco: preco, preco_antigo: desconto > 0 ? Math.round(preco / (1 - desconto / 100) * 100) / 100 : '',
           imagem_url: it.imageUrl, tema_id: t.id, nota: it.ratingStar, vendas: it.sales, comissao: it.commissionRate,
-          descricao: 'Nota ' + it.ratingStar + ' e ' + it.sales + ' vendidos' + (it.shopName ? ' · loja ' + it.shopName : '') + '.',
+          descricao: '• nota ' + it.ratingStar + ' e ' + it.sales + ' vendidos' + (desconto > 0 ? '\n• ' + desconto + '% off' : ''),
           _pontos: Number(it.ratingStar) * 1000 + Math.log(Number(it.sales) + 1) * 100 + desconto,
         });
       });
     });
     bons.sort(function (a, b) { return b._pontos - a._pontos; });
-    const lote = bons.slice(0, FILTRO.maxPorTema).map(function (o) { delete o._pontos; return o; });
+    const lote = bons.slice(0, Math.min(FILTRO.maxPorTema, FILTRO.maxPorDia - total)).map(function (o) { delete o._pontos; return o; });
     if (lote.length) total += Number(supabaseRpc_('registrar_ofertas', { chave: chave, ofertas: lote }));
   });
   Logger.log('Ofertas novas na fila Aprovar: ' + total);
