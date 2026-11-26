@@ -106,6 +106,11 @@ window.__resolverEmail = async (id) => {
   if (error) return toast('Não deu: ' + error.message);
   toast('Resolvido ✔'); rota();
 };
+window.__filaRobo = async (id, st) => {
+  const { error } = await sb.from('achadinhos').update({ envio_status: st, envio_erro: null }).eq('id', id);
+  if (error) return toast('Não deu: ' + error.message);
+  toast(st === 'na_fila' ? 'Na fila: o robô posta no grupo 💗' : 'Tirei da fila do robô'); rota();
+};
 window.__enviarWhats = async (id) => {
   const { data } = await sb.from('achadinhos').select('*').eq('id', id).single();
   if (data) enviarWhats(data);
@@ -132,7 +137,11 @@ const ENT = {
   achadinhos: {
     nome: 'Achadinhos', icone: '🎁', titulo: (r) => r.titulo, ordem: ['criado_em', false],
     sub: (r) => [nomeTema(r.tema_id), r.loja, brl(r.preco), r.status].filter(Boolean).join(' · '),
-    extra: (r) => r.status === 'publicado' ? `<div class="acoes"><button class="btn zap peq" onclick="__enviarWhats('${r.id}')">Enviar no WhatsApp</button></div>` : '',
+    extra: (r) => r.status === 'publicado' ? `<div class="acoes">
+      ${r.envio_status === 'na_fila' ? `<span class="small">🤖 Na fila do robô</span><button class="btn sec peq" onclick="__filaRobo('${r.id}','cancelado')">Tirar da fila</button>`
+        : r.envio_status === 'enviado' ? `<span class="small">✅ Postado pelo robô${r.envio_em ? ' ' + esc(horaBR(r.envio_em)) : ''}</span>`
+        : `${r.envio_status === 'erro' ? '<span class="small" style="color:#b3261e">⚠️ O robô não conseguiu postar</span>' : ''}${'envio_status' in r ? `<button class="btn sec peq" onclick="__filaRobo('${r.id}','na_fila')">Robô posta</button>` : ''}`}
+      <button class="btn zap peq" onclick="__enviarWhats('${r.id}')">Enviar eu mesma</button></div>` : '',
     campos: [
       ['titulo', 'Produto', 'text', { req: true }], ['link', 'Link de afiliado', 'text', { req: true }],
       ['tema_id', 'Tema', 'select', { opFn: () => TEMAS.map((t) => [t.id, `${t.emoji || ''} ${t.nome}${temaAtivo(t) ? '' : ' (fora de época)'}`]) }],
@@ -403,7 +412,11 @@ async function telaAprovar() {
     const { error } = await sb.from(ent).update(upd).eq('id', id);
     if (error) { b.disabled = false; return toast('Não deu: ' + error.message); }
     toast(st === 'descartado' || st === 'arquivado' ? 'Descartado' : 'Aprovado! 💗');
-    if (ent === 'achadinhos' && st === 'publicado' && confirm('Publicado no site! Quer enviar agora no WhatsApp?')) await window.__enviarWhats(id);
+    if (ent === 'achadinhos' && st === 'publicado') {
+      const { data: sit } = await sb.rpc('situacao_robo_whats');
+      if (sit && sit.envio_ligado) toast('Aprovado! O robô posta no grupo 💗');
+      else if (confirm('Publicado no site! Quer enviar agora no WhatsApp?')) await window.__enviarWhats(id);
+    }
     rota();
   })));
   const especiais = TEMAS.filter((t) => t.emoji === '🎯' && temaAtivo(t));
@@ -562,7 +575,7 @@ async function telaAjustes() {
 /* ---------- Resumo dos grupos (robô do WhatsApp, só leitura) ---------- */
 const ACOES_ROBO = 'https://github.com/Jaque-Ligadasmamaes/liga-das-mamaes/actions/workflows/robo-whatsapp.yml';
 const horaBR = (d) => d ? new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-const AVISO_GRUPO = 'Oi, mamães! 💗 Para a gente não perder nenhum pedido de indicação na correria, a Liga agora tem uma *assistente de resumo* (o número "Liga · Resumos"). Ela só lê o grupo, nunca manda mensagem, não guarda fotos nem áudios e apaga o texto em 3 dias. Serve só para a Jaque ver rapidinho o que ficou sem resposta. Qualquer dúvida, é só me chamar!';
+const AVISO_GRUPO = 'Oi, mamães! 💗 Para a gente não perder nenhum pedido de indicação na correria, a Liga agora tem uma *assistente de resumo* (o número "Liga · Resumos"). Neste grupo ela só lê, nunca manda mensagem, não guarda fotos nem áudios e apaga o texto em 3 dias. Serve só para a Jaque ver rapidinho o que ficou sem resposta. Qualquer dúvida, é só me chamar!';
 async function telaGrupos() {
   const [{ data: grupos }, { data: pend }, { data: resumos }, { data: sit }] = await Promise.all([
     sb.from('wa_grupos').select('*').order('nome'),
@@ -589,6 +602,13 @@ async function telaGrupos() {
       if (n.length < 12) return toast('Coloque 55 + DDD + número, ex.: 5511987654321');
       const { error } = await sb.rpc('numero_robo_whats', { numero: n });
       toast(error ? 'Não salvou: ' + error.message : 'Número do chip salvo ✔'); if (!error) rota();
+    });
+    const fE = $('#fEnvio'); if (fE) fE.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const grupo = fE.elements.grupo.value; const ligado = fE.elements.ligado.checked;
+      if (ligado && !grupo) return toast('Escolha o grupo primeiro.');
+      const { error } = await sb.rpc('configurar_envio_whats', { grupo, ligado });
+      toast(error ? 'Não salvou: ' + error.message : ligado ? 'Envio automático ligado ✔' : 'Envio automático desligado'); if (!error) rota();
     });
     const bp = $('#pausar'); if (bp) bp.addEventListener('click', async () => {
       const { error } = await sb.rpc('pausar_robo_whats', { pausar: !sit?.pausado });
@@ -634,6 +654,12 @@ async function telaGrupos() {
     <h2 class="titulo-sec">⚙️ Robô</h2>
     <div class="item"><div class="linha"><b>${situacao}</b><button class="btn sec peq" id="pausar" type="button">${sit?.pausado ? 'Ligar' : 'Pausar'}</button></div>
       ${sit?.ultima_execucao ? `<div class="small muted">Última rodada: ${horaBR(sit.ultima_execucao)} · ${esc(sit.ultimo_status || '')}</div>` : ''}</div>
+    ${sit && 'envio_ligado' in sit ? `<details class="item" ${sit.envio_ligado ? '' : 'open'}><summary><b>📤 Envio automático dos achadinhos: ${sit.envio_ligado ? 'ligado' : 'desligado'}</b></summary>
+      <p class="small muted">Quando ligado, todo achadinho aprovado entra na fila e o robô posta foto + legenda no grupo escolhido: das 8h às 21h, no mínimo 45 min entre posts e no máximo 5 por dia. O chip do robô precisa ser admin do grupo.</p>
+      ${sit.envio_ligado ? `<p class="small">Na fila: <b>${sit.na_fila || 0}</b> · Postados hoje: <b>${sit.enviados_hoje || 0}</b> de 5</p>` : ''}
+      <form id="fEnvio"><div class="campo"><label>Grupo onde o robô posta</label><select name="grupo"><option value="">—</option>${gs.map((g) => `<option value="${esc(g.jid)}" ${g.jid === sit.grupo_achadinhos ? 'selected' : ''}>${esc(g.nome || 'Grupo sem nome')}</option>`).join('')}</select></div>
+        <label class="check"><input type="checkbox" name="ligado" ${sit.envio_ligado ? 'checked' : ''}> Ligar o envio automático</label>
+        <button class="btn sec peq" style="margin-top:8px">Salvar</button></form></details>` : ''}
     <details class="item" ${gs.length ? '' : 'open'}><summary><b>👥 Quais grupos o robô lê (${ativos.length} de ${gs.length})</b></summary>
       ${gs.length ? `<p class="small muted">Comece com um grupo só por umas semanas. O robô só enxerga grupos em que o chip dele foi adicionado.</p>${gs.map((g) => `<label class="linha" style="align-items:center;padding:6px 0"><span>${esc(g.nome || 'Grupo sem nome')}${g.participantes ? ` <span class="small muted">· ${g.participantes} pessoas</span>` : ''}</span><input type="checkbox" data-grupo="${esc(g.jid)}" ${g.ativo ? 'checked' : ''} style="width:24px;height:24px"></label>`).join('')}`
         : '<p class="small muted">A lista aparece depois que o chip for conectado e adicionado aos grupos.</p>'}</details>

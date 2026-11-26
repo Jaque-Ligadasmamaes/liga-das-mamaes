@@ -2,13 +2,16 @@
   "name": "robo-whatsapp-liga",
   "private": true,
   "type": "module",
-  "description": "Robô SOMENTE LEITURA dos grupos da Liga das Mamães: lê, guarda o mínimo e manda para o painel. Nunca envia mensagens.",
+  "description": "Robô da Liga das Mamães num chip separado: lê os grupos ativados (coletar) e posta no grupo de Achadinhos só o que a Jaque aprovou (postar).",
   "scripts": {
     "coletar": "node coletar.mjs",
     "parear": "node coletar.mjs --parear",
-    "test": "node --test"
+    "test": "node --test",
+    "postar": "node postar.mjs"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "baileys": "7.0.0-rc14",
     "pino": "^9.6.0"
