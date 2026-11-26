@@ -38,6 +38,8 @@ async function buscarML(token, palavra) {
 async function main() {
   if (!CHAVE_LIGA) throw new Error('Falta o segredo CHAVE_LIGA no GitHub (é a chave do robô em Ajustes do painel).');
   const temas = await rpc('temas_para_robo', { chave: CHAVE_LIGA });
+  // Buscas especiais da Jaque (🎯) vêm primeiro na fila
+  temas.sort((a, b) => (b.emoji === '🎯') - (a.emoji === '🎯'));
   console.log(`Temas ativos: ${temas.length}`);
   if (!temas.length) return console.log('Nenhum tema ativo com palavras de busca. Cadastre em Conteúdo › Temas.');
 

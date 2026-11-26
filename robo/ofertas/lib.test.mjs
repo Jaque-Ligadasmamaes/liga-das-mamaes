@@ -10,7 +10,7 @@ test('oferta boa vira item da fila com falta de link', () => {
   assert.equal(o.precisa_link, true);
   assert.equal(o.origem_id, 'ml:MLB1');
   assert.equal(o.preco_antigo, 50);
-  assert.match(o.descricao, /40% off · frete grátis/);
+  assert.equal(o.descricao, '• 40% off\n• frete grátis');
   assert.match(o.imagem_url, /^https:.*-O\.jpg$/);
 });
 

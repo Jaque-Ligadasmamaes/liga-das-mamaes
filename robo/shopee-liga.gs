@@ -58,6 +58,7 @@ function supabaseRpc_(nome, corpo) {
 function buscarOfertas() {
   const chave = PropertiesService.getScriptProperties().getProperty('CHAVE_LIGA');
   const temas = supabaseRpc_('temas_para_robo', { chave: chave });
+  temas.sort(function (a, b) { return (b.emoji === '🎯') - (a.emoji === '🎯'); }); // buscas especiais primeiro
   let total = 0;
   temas.forEach(function (t) {
     if (total >= FILTRO.maxPorDia) return;
@@ -77,7 +78,7 @@ function buscarOfertas() {
           origem_id: 'shopee:' + it.itemId, titulo: it.productName, link: it.offerLink, loja: 'Shopee',
           preco: preco, preco_antigo: desconto > 0 ? Math.round(preco / (1 - desconto / 100) * 100) / 100 : '',
           imagem_url: it.imageUrl, tema_id: t.id, nota: it.ratingStar, vendas: it.sales, comissao: it.commissionRate,
-          descricao: 'Nota ' + it.ratingStar + ' e ' + it.sales + ' vendidos' + (it.shopName ? ' · loja ' + it.shopName : '') + '.',
+          descricao: '• nota ' + it.ratingStar + ' e ' + it.sales + ' vendidos' + (desconto > 0 ? '\n• ' + desconto + '% off' : ''),
           _pontos: Number(it.ratingStar) * 1000 + Math.log(Number(it.sales) + 1) * 100 + desconto,
         });
       });

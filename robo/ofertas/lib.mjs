@@ -29,7 +29,7 @@ export function ofertaML(it, tema) {
     preco, preco_antigo: antigo > preco ? antigo : '',
     imagem_url: String(it.thumbnail || '').replace(/^http:/, 'https:').replace(/-I\.(jpg|webp)$/, '-O.$1'),
     tema_id: tema.id,
-    descricao: extras.length ? extras.join(' · ') + '.' : '',
+    descricao: extras.map((e) => '• ' + e).join('\n'),
     _pontos: desconto * 3 + (freteGratis ? 40 : 0) + (lojaOficial ? 30 : 0),
   };
 }
