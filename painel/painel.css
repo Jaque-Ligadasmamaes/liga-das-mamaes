@@ -41,3 +41,11 @@ details.item summary::-webkit-details-marker { display: none; }
 .atencao { background: #fff3d6; border-radius: 12px; padding: 10px 12px; font-size: .92rem; font-weight: 700; white-space: pre-wrap; }
 .selo-novo { background: var(--rosa); color: #fff; font-size: .72rem; font-weight: 800; border-radius: 999px; padding: 2px 8px; }
 .abas a { font-size: .62rem; }
+
+/* Tela "Enviar no Achadinhos" (foto + legenda) */
+.envio { position: fixed; inset: 0; background: rgba(31, 78, 95, .55); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.envio-caixa { background: #fff; width: 100%; max-width: 520px; max-height: 92vh; overflow: auto; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); display: grid; gap: 10px; position: relative; }
+.envio-fechar { position: absolute; top: 10px; right: 12px; border: 0; background: #f4ece8; border-radius: 50%; width: 34px; height: 34px; font-size: 16px; }
+.envio-foto { width: 100%; max-height: 42vh; object-fit: contain; background: #fff; border: 1px solid var(--linha); border-radius: 14px; }
+.envio-texto { white-space: pre-wrap; font: 15px/1.45 inherit; font-family: inherit; background: #e7f6ec; border-radius: 12px; padding: 12px; margin: 0; }
+.envio-passos { margin: 0; padding-left: 18px; }
