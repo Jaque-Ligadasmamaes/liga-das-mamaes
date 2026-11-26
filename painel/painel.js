@@ -274,13 +274,42 @@ async function telaAprovar() {
     sb.from('conteudos').select('*').eq('status', 'ideia').order('criado_em'),
   ]);
   contarPendencias();
+  // Achadinhos: filtro por loja (a busca diária traz até 20 de cada)
+  const todos = a.data || [];
+  const lojaSel = sessionStorage.getItem('f_loja_aprovar') || '';
+  const lojas = [...new Set(todos.map((r) => r.loja || 'Outra'))].sort();
+  const chips = todos.length ? `<div class="acoes" style="flex-wrap:wrap">${[['', `Todas (${todos.length})`], ...lojas.map((l) => [l, `${l} (${todos.filter((r) => (r.loja || 'Outra') === l).length})`])]
+    .map(([v, t]) => `<button class="btn ${v === lojaSel ? '' : 'sec'} peq" data-loja="${esc(v)}">${esc(t)}</button>`).join('')}</div>` : '';
+  const achados = lojaSel ? todos.filter((r) => (r.loja || 'Outra') === lojaSel) : todos;
+  const linkBox = (r) => r.precisa_link ? `
+      <div class="item" style="background:#FFF6EE;margin:.5rem 0">
+        <p class="small"><b>Falta o link de afiliado.</b> 1) Toque em Abrir no app. 2) Na barra de afiliados, toque em Compartilhar e copie o link. 3) Cole aqui e salve.</p>
+        <a class="btn sec peq" href="${esc(safeUrl(r.link_produto || r.link))}" target="_blank" rel="noopener">Abrir no app ↗</a>
+        <input type="url" inputmode="url" placeholder="Cole aqui o link de afiliado" data-linkinput="${r.id}" style="width:100%;margin:.5rem 0">
+        <button class="btn peq" data-salvarlink="${r.id}">Salvar link</button>
+      </div>` : '';
   const bloco = (titulo, itens, ent, sim, nao, simTxt) => `<h2 class="titulo-sec">${titulo}</h2>` + (itens.length ? itens.map((r) => `
     <div class="item"><div class="linha">${r.imagem_url ? `<img class="miniatura" src="${esc(safeUrl(r.imagem_url))}" alt="">` : ''}<div style="flex:1"><h3>${esc(ENT[ent].titulo(r))}</h3><div class="small muted">${esc(ENT[ent].sub(r))}</div></div></div>
       ${r.descricao ? `<p class="small">${esc(r.descricao)}</p>` : ''}${r.roteiro ? `<p class="small">${esc(r.roteiro)}</p>` : ''}
       ${r.indicado_por ? `<p class="small muted">Indicado por ${esc(r.indicado_por)}${r.contato_indicacao ? ' · ' + esc(r.contato_indicacao) : ''}</p>` : ''}
-      ${r.link && ent === 'achadinhos' ? `<a class="small" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Abrir oferta ↗</a>` : ''}
-      <div class="acoes"><button class="btn verde peq" data-acao="${ent}|${r.id}|${sim}">${simTxt}</button><a class="btn sec peq" href="#/editar/${ent}/${r.id}">Editar</a><button class="btn perigo peq" data-acao="${ent}|${r.id}|${nao}">Descartar</button></div>
+      ${ent === 'achadinhos' && (r.nota || r.vendas) ? `<p class="small muted">${r.nota ? '⭐ ' + esc(r.nota) : ''}${r.vendas ? ' · ' + esc(r.vendas) + ' vendidos' : ''}${r.preco_antigo ? ' · antes ' + esc(brl(r.preco_antigo)) : ''}</p>` : ''}
+      ${r.link && ent === 'achadinhos' && !r.precisa_link ? `<a class="small" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Abrir oferta ↗</a>` : ''}
+      ${ent === 'achadinhos' ? linkBox(r) : ''}
+      <div class="acoes"><button class="btn verde peq" data-acao="${ent}|${r.id}|${sim}" ${ent === 'achadinhos' && r.precisa_link ? 'disabled title="Cole o link de afiliado primeiro"' : ''}>${simTxt}</button><a class="btn sec peq" href="#/editar/${ent}/${r.id}">Editar</a><button class="btn perigo peq" data-acao="${ent}|${r.id}|${nao}">Descartar</button></div>
     </div>`).join('') : '<p class="muted small">Nada pendente.</p>');
+  setTimeout(() => {
+    $$('[data-loja]').forEach((b) => b.addEventListener('click', () => { sessionStorage.setItem('f_loja_aprovar', b.dataset.loja); rota(); }));
+    $$('[data-salvarlink]').forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset.salvarlink;
+      const v = ($(`[data-linkinput="${id}"]`).value || '').trim();
+      const m = v.match(/https?:\/\/\S+/);
+      if (!m) return toast('Cole o link que começa com https://');
+      b.disabled = true;
+      const { error } = await sb.from('achadinhos').update({ link: m[0], precisa_link: false }).eq('id', id);
+      if (error) { b.disabled = false; return toast('Não salvou: ' + error.message); }
+      toast('Link salvo ✔ Agora é só publicar.'); rota();
+    }));
+  });
   setTimeout(() => $$('[data-acao]').forEach((b) => b.addEventListener('click', async () => {
     const [ent, id, st] = b.dataset.acao.split('|');
     const upd = { status: st }; if (ent === 'achadinhos' && st === 'publicado') upd.publicado_em = new Date().toISOString();
@@ -292,7 +321,7 @@ async function telaAprovar() {
     rota();
   })));
   return topo('Aprovar') + `<div class="pcorpo">
-    ${bloco('🎁 Achadinhos', a.data || [], 'achadinhos', 'publicado', 'descartado', 'Publicar no site')}
+    ${chips}${bloco('🎁 Achadinhos', achados, 'achadinhos', 'publicado', 'descartado', 'Publicar no site')}
     ${bloco('📒 Indicações para o Guia', n.data || [], 'negocios', 'aprovado', 'arquivado', 'Aprovar')}
     ${bloco('🎬 Ideias de vídeo', v.data || [], 'conteudos', 'aprovado', 'descartado', 'Aprovar ideia')}
   </div>`;

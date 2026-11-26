@@ -1,0 +1,44 @@
+# Busca diária de ofertas da Liga (só APIs oficiais das lojas). Grátis no GitHub Actions.
+# Tudo cai na fila "Aprovar" do painel; nada é publicado sem a Jaque aprovar.
+# O log é público: só mostra contagens, nunca chaves.
+name: Robô de ofertas (busca diária)
+
+on:
+  # O horário diário só será ligado depois do teste aprovado:
+  # schedule:
+  #   - cron: '7 9 * * *'   # 6h07 em São Paulo
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'teste = só conta, não grava; valer = grava na fila Aprovar'
+        type: choice
+        options: [teste, valer]
+        default: teste
+
+concurrency:
+  group: robo-ofertas
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  robo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: robo/ofertas
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test lib.test.mjs
+      - name: Buscar ofertas
+        env:
+          CHAVE_LIGA: ${{ secrets.CHAVE_LIGA }}
+          ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
+          ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
+        run: |
+          if [ "${{ github.event.inputs.modo }}" = "valer" ]; then node buscar.mjs; else node buscar.mjs --teste; fi
