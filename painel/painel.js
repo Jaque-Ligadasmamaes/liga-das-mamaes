@@ -9,52 +9,97 @@ let AGENTES = [];
 const nomeAgente = (slug) => { const a = AGENTES.find((x) => x.slug === slug); return a ? `${a.emoji} ${a.nome}` : slug; };
 const nomeTema = (id) => { const t = TEMAS.find((x) => x.id === id); return t ? `${t.emoji || ''} ${t.nome}` : ''; };
 
-// Texto pronto para o grupo/canal de Achadinhos no WhatsApp, no modelo da Jaque:
-//   CHAMADA (linha da descrição sem "•")
-//   *Produto*
-//   *R$ 39* (de R$ 62)
-//   link
-//   • dicas (linhas da descrição que começam com • ou -)
+// Legenda que vai junto com a FOTO do produto (estilo escolhido pela Jaque):
+//   🔥 NOME DO PRODUTO 📉
+//   Comentário/chamada (linhas da descrição sem •)
+//
+//   💵 R$ 39 (antes R$ 62)
+//   🧾 Cupom: CODIGO
+//   • dicas (linhas da descrição com •)
+//
+//   🛒 Vendido por Loja
+//   📌 Link: url
+//
+//   💗 Convide outras mamães para a Liga: site
+const precoCurto = (v) => 'R$ ' + (Number(v) % 1 ? Number(v).toFixed(2).replace('.', ',') : String(Math.round(Number(v))));
 function textoWhats(o) {
   const linhasDesc = String(o.descricao || '').split('\n').map((l) => l.trim()).filter(Boolean);
-  const dicas = linhasDesc.filter((l) => /^[•\-*]/.test(l)).map((l) => '• ' + l.replace(/^[•\-*]\s*/, ''));
-  const chamada = linhasDesc.filter((l) => !/^[•\-*]/.test(l));
-  const linhas = [];
-  if (chamada.length) linhas.push(...chamada.map((l) => `*${l.replace(/\*/g, '')}*`), '');
-  linhas.push(`*${o.titulo}*`, '');
-  if (o.preco) linhas.push(o.preco_antigo ? `*${brl(o.preco)}* (de ~${brl(o.preco_antigo)}~)` : `*${brl(o.preco)}*`);
-  linhas.push(o.link);
-  if (o.cupom) dicas.unshift(`• use o cupom *${o.cupom}*`);
-  if (dicas.length) linhas.push('', ...dicas);
-  linhas.push('', '_Link de afiliado: você paga o mesmo e ajuda a Liga 💗_');
-  return linhas.join('\n');
+  const ehDica = (l) => /^[•\-*]/.test(l);
+  const dicas = linhasDesc.filter(ehDica).map((l) => '• ' + l.replace(/^[•\-*]\s*/, ''));
+  const comentario = linhasDesc.filter((l) => !ehDica(l)).join('\n');
+  const caiu = o.preco && o.preco_antigo > o.preco;
+  const topo = [`🔥 *${String(o.titulo).toUpperCase().replace(/\*/g, '')}*${caiu ? ' 📉' : ''}`];
+  if (comentario) topo.push(comentario);
+  const valores = [];
+  if (o.preco) valores.push(`💵 ${precoCurto(o.preco)}${caiu ? ` (antes ${precoCurto(o.preco_antigo)})` : ''}`);
+  if (o.cupom) valores.push(`🧾 Cupom: *${o.cupom}*`);
+  valores.push(...dicas);
+  const link = [o.loja ? `🛒 Vendido por ${o.loja}` : '', `📌 Link: ${o.link}`].filter(Boolean);
+  const site = new URL('../', location.href).href;
+  return [topo.join('\n\n'), valores.join('\n'), link.join('\n'), `💗 Convide outras mamães para a Liga:\n${site}`, '_link de afiliado_']
+    .filter(Boolean).join('\n\n');
 }
 async function fotoComoArquivo(url) {
   try {
     const r = await fetch(url, { mode: 'cors' });
     if (!r.ok) return null;
     const b = await r.blob();
-    const tipo = b.type && b.type.startsWith('image/') ? b.type : 'image/jpeg';
-    return new File([b], 'achadinho.' + (tipo.split('/')[1] || 'jpg'), { type: tipo });
+    if (!b.type.startsWith('image/')) return null;
+    return new File([b], 'achadinho.' + (b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'), { type: b.type });
   } catch { return null; }
 }
+async function copiar(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; } catch { return false; }
+}
+// Abre uma tela com a foto e a legenda. No iPhone o WhatsApp manda a foto e ignora o texto,
+// então a legenda já fica copiada: é só colar no campo "Adicionar legenda" antes de enviar.
 async function enviarWhats(o) {
   const texto = textoWhats(o);
-  try {
-    if (navigator.share) {
-      // Com foto do produto quando o celular deixa (no iPhone o texto vai junto como legenda)
-      const foto = o.imagem_url ? await fotoComoArquivo(safeUrl(o.imagem_url)) : null;
-      if (foto && navigator.canShare && navigator.canShare({ files: [foto], text: texto })) {
-        try { await navigator.clipboard.writeText(texto); } catch { /* ok */ }
-        await navigator.share({ files: [foto], text: texto });
-        return;
+  const foto = o.imagem_url ? safeUrl(o.imagem_url) : '';
+  const tela = document.createElement('div');
+  tela.className = 'envio';
+  tela.innerHTML = `<div class="envio-caixa">
+      <button class="envio-fechar" aria-label="Fechar">✕</button>
+      <h3>Enviar no Achadinhos</h3>
+      ${foto ? `<img class="envio-foto" src="${esc(foto)}" alt="">` : '<p class="small" style="color:#b3261e">Esta oferta está sem foto. Toque em Editar e coloque a foto do produto antes de enviar.</p>'}
+      <pre class="envio-texto">${esc(texto)}</pre>
+      <ol class="small envio-passos">
+        <li>Toque em <b>Enviar foto</b> e escolha o WhatsApp e o grupo.</li>
+        <li>Na tela da foto, toque em <b>Adicionar legenda</b>, segure e toque em <b>Colar</b>.</li>
+        <li>Envie. 💗</li>
+      </ol>
+      <div class="acoes">
+        ${foto ? '<button class="btn zap" data-env="foto">📷 Enviar foto</button>' : ''}
+        <button class="btn sec" data-env="copiar">Copiar legenda</button>
+        <button class="btn sec" data-env="texto">Enviar só o texto</button>
+      </div>
+      <p class="small muted">Se a foto não for: toque e segure na foto acima › Compartilhar.</p>
+    </div>`;
+  document.body.appendChild(tela);
+  const fechar = () => tela.remove();
+  tela.addEventListener('click', (e) => { if (e.target === tela) fechar(); });
+  tela.querySelector('.envio-fechar').addEventListener('click', fechar);
+  const arquivo = foto ? fotoComoArquivo(foto) : Promise.resolve(null); // já começa a baixar
+  tela.querySelectorAll('[data-env]').forEach((b) => b.addEventListener('click', async () => {
+    const acao = b.dataset.env;
+    const copiou = await copiar(texto);
+    try {
+      if (acao === 'foto') {
+        const f = await arquivo;
+        if (f && navigator.canShare && navigator.canShare({ files: [f] })) {
+          toast(copiou ? 'Legenda copiada ✔ Cole no campo de legenda.' : 'Toque em Copiar legenda depois.');
+          await navigator.share({ files: [f] });
+        } else {
+          toast('Não deu para anexar a foto daqui. Toque e segure na foto › Compartilhar. A legenda já está copiada.');
+        }
+      } else if (acao === 'texto') {
+        if (navigator.share) await navigator.share({ text: texto });
+        else window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+      } else {
+        toast(copiou ? 'Legenda copiada ✔' : 'Toque e segure no texto para copiar.');
       }
-      await navigator.share({ text: texto });
-      return;
-    }
-  } catch (e) { if (e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(texto); toast('Texto copiado! Cole no grupo de Achadinhos.'); }
-  catch { prompt('Copie o texto:', texto); }
+    } catch (e) { if (e.name !== 'AbortError') toast('Não deu: ' + e.message); }
+  }));
 }
 window.__resolverEmail = async (id) => {
   const { error } = await sb.from('emails_liga').update({ status: 'resolvido' }).eq('id', id);
@@ -93,7 +138,7 @@ const ENT = {
       ['tema_id', 'Tema', 'select', { opFn: () => TEMAS.map((t) => [t.id, `${t.emoji || ''} ${t.nome}${temaAtivo(t) ? '' : ' (fora de época)'}`]) }],
       ['loja', 'Loja', 'select', { op: op(['Shopee', 'Mercado Livre', 'Amazon', 'Magalu', 'Outra']) }],
       ['preco', 'Preço (R$)', 'number'], ['preco_antigo', 'Preço antes (R$)', 'number'], ['cupom', 'Cupom', 'text'],
-      ['imagem_url', 'Foto do produto', 'foto'], ['descricao', 'Chamada e dicas', 'textarea', { ph: 'NÃO COMPRE NO MERCADO!!\n• selecione programe e poupe\n• consulte disponibilidade para sua região' }],
+      ['imagem_url', 'Foto do produto', 'foto'], ['descricao', 'Comentário e dicas', 'textarea', { ph: 'Por que vale a pena (ex.: sai a 6 reais cada pote!)\n• dica 1 (comece com •)\n• dica 2' }],
       ['status', 'Situação', 'select', { op: [['sugerido', 'Para aprovar'], ['publicado', 'Publicado'], ['descartado', 'Descartado']] }],
     ],
     novo: { status: 'publicado', fonte: 'manual' },
